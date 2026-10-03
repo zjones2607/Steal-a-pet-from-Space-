@@ -1,71 +1,58 @@
 {
-  "name": "Rojo init",
+  "name": "Steal-a-pet-from-Space",
   "tree": {
     "$className": "DataModel",
 
-    "ReplicatedStorage": {
-      "Shared": {
-        "$path": "src/shared"
+    "ServerScriptService": {
+      "$ignoreUnknownInstances": true,
+      "PlanetEggCollection": {
+        "$path": "src/ServerScriptService/PlanetEggCollection.server.luau"
+      },
+      "StationTierInit": {
+        "$path": "src/ServerScriptService/StationTierInit.server.luau"
+      },
+      "StationUpgrades": {
+        "$path": "src/ServerScriptService/StationUpgrades.luau"
       }
     },
 
-    "ServerScriptService": {
-      "Server": {
-        "$path": "src/server"
+    "ServerStorage": {
+      "$ignoreUnknownInstances": true,
+      "RideARocketBaseBuilder": {
+        "$path": "src/ServerStorage/RideARocketBaseBuilder.luau"
+      },
+      "RideARocketMapBuilder": {
+        "$path": "src/ServerStorage/RideARocketMapBuilder.luau"
+      }
+    },
+
+    "StarterGui": {
+      "$ignoreUnknownInstances": true,
+      "SpaceGUI": {
+        "$className": "ScreenGui",
+        "$ignoreUnknownInstances": true,
+        "SpaceGUIConfig": {
+          "$path": "src/StarterGui/SpaceGUI/SpaceGUIConfig.luau"
+        },
+        "SpaceGUIController": {
+          "$path": "src/StarterGui/SpaceGUI/SpaceGUIController.client.luau"
+        },
+        "SpaceIcons": {
+          "$path": "src/StarterGui/SpaceGUI/SpaceIcons.luau"
+        },
+        "SpaceModels": {
+          "$path": "src/StarterGui/SpaceGUI/SpaceModels.luau"
+        }
       }
     },
 
     "StarterPlayer": {
+      "$ignoreUnknownInstances": true,
       "StarterPlayerScripts": {
-        "Client": {
-          "$path": "src/client"
+        "$ignoreUnknownInstances": true,
+        "PlanetEggFeedback": {
+          "$path": "src/StarterPlayer/StarterPlayerScripts/PlanetEggFeedback.client.luau"
         }
-      }
-    },
-
-    "Workspace": {
-      "$properties": {
-        "FilteringEnabled": true
-      },
-      "Baseplate": {
-        "$className": "Part",
-        "$properties": {
-          "Anchored": true,
-          "Color": [
-            0.38823,
-            0.37254,
-            0.38823
-          ],
-          "Locked": true,
-          "Position": [
-            0,
-            -10,
-            0
-          ],
-          "Size": [
-            512,
-            20,
-            512
-          ]
-        }
-      }
-    },
-    "Lighting": {
-      "$properties": {
-        "Ambient": [
-          0,
-          0,
-          0
-        ],
-        "Brightness": 2,
-        "GlobalShadows": true,
-        "Outlines": false,
-        "Technology": "Voxel"
-      }
-    },
-    "SoundService": {
-      "$properties": {
-        "RespectFilteringEnabled": true
       }
     }
   }
