@@ -1,4 +1,5 @@
-# Project place file
+# Built place files (game.rbxl is the committed snapshot of the real game)
+/*.rbxlx
 /Rojo init.rbxlx
 
 # Roblox Studio lock files
@@ -6,3 +7,6 @@
 /*.rbxl.lock
 
 sourcemap.json
+
+# macOS
+.DS_Store
