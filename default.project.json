@@ -21,6 +21,9 @@
       "RideARocketBaseBuilder": {
         "$path": "src/ServerStorage/RideARocketBaseBuilder.luau"
       },
+      "RideARocketExpansion": {
+        "$path": "src/ServerStorage/RideARocketExpansion.luau"
+      },
       "RideARocketMapBuilder": {
         "$path": "src/ServerStorage/RideARocketMapBuilder.luau"
       }
