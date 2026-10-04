@@ -157,6 +157,7 @@ end)
 -- Open / close
 local function setOpen(open)
 	window.Visible = open
+	player:SetAttribute("AdminPanelOpen", open) -- lets JetpackHUD hide its buttons
 	if open then refreshPlayers() end
 end
 toggle.MouseButton1Click:Connect(function() setOpen(not window.Visible) end)

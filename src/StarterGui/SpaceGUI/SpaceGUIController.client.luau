@@ -1444,6 +1444,7 @@ openPage = function(page, tab)
     closeToken = closeToken + 1
     local wasOpen = windowOpen
     windowOpen = true
+    player:SetAttribute("SpaceGUIOpen", true) -- lets other HUDs (JetpackHUD) get out of the way
     fit.Visible = true
     scrim.Visible = true
     resize()
@@ -1465,6 +1466,7 @@ end
 closeWindow = function()
     if not windowOpen then return end
     windowOpen = false
+    player:SetAttribute("SpaceGUIOpen", false)
     closeToken = closeToken + 1
     local token = closeToken
     tween(pop, 0.16, {Scale = 0.85}, Enum.EasingStyle.Quad, Enum.EasingDirection.In)

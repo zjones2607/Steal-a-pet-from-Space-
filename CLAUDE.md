@@ -43,6 +43,8 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
   - **Flight controls**: `JetpackHUD.client.luau` draws cartoon buttons in SpaceGUI's style. It's the only script that requires `JetpackFlight`.
     - LAUNCH (F key) slides up from the bottom while you stand in a `LaunchZone` and drops away when you leave it. It breathes, a shine sweeps across it, and it turns grey while recharging.
     - MY PAD (T key) is shown instead while you're off the pad and teleports you to your launch pad.
+    - Both buttons slide away while a menu is open. SpaceGUI sets the local player attribute `SpaceGUIOpen` and the admin panel sets `AdminPanelOpen`; add any new window's attribute to `MENU_ATTRIBUTES`.
+    - T still teleports while the buttons are hidden, but F only launches while LAUNCH is showing.
   - Each tier can climb to just above one planet. The server works out these heights from the planet positions when it starts, as `Ceiling_<Id>` attributes, so moving planets doesn't break flying.
 - **Stations**: `StationClaims.server.luau` gives each joining player the first free `StationPlot1..8` and spawns them on its pad, facing the airlock (also after respawning).
   - Ownership is stored in the plot attributes `OwnerUserId`/`OwnerName` and the player attribute `Station`. Use these to find a player's station or farm.
