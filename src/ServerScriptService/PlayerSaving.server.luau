@@ -2,12 +2,15 @@
 -- every couple of minutes, and when the server shuts down. Works across all servers.
 -- To save something new, add its player attribute or folder name to the lists below.
 -- Other scripts should wait for the player's "DataLoaded" attribute before changing saved things.
+-- ServerStorage.SavePlayerNow (a BindableFunction) saves one player straight away and returns
+-- whether it worked; Robux purchases use it so a bought item is saved before it counts as delivered.
 local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
 local RunService = game:GetService("RunService")
+local ServerStorage = game:GetService("ServerStorage")
 
-local SAVED_ATTRIBUTES = {"EggsCollected", "Coins", "Jetpack"}
-local SAVED_FOLDERS = {"EggInventory", "EggDiscoveries", "OwnedJetpacks"}
+local SAVED_ATTRIBUTES = {"EggsCollected", "Coins", "Jetpack", "CoinBoostEndsAt", "LuckBoostEndsAt"}
+local SAVED_FOLDERS = {"EggInventory", "EggDiscoveries", "OwnedJetpacks", "SpaceGUIData", "PurchaseHistory"}
 local STORE_NAME = "PlayerData_v1"
 local AUTOSAVE_EVERY = 120
 local LOCK_WAITS = 6          -- times to wait 5s for another server to finish saving before taking over
@@ -122,6 +125,7 @@ local function save(player, leaving)
 	end)
 	s.saving = false
 	if not ok then warn(("PlayerSaving: couldn't save %s: %s"):format(player.Name, tostring(err))) end
+	return ok
 end
 
 local function release(player, session)
@@ -154,6 +158,16 @@ local function onPlayerAdded(player)
 	end
 	player:SetAttribute("DataLoaded", true)
 end
+
+local saveNow = Instance.new("BindableFunction")
+saveNow.Name = "SavePlayerNow"
+saveNow.OnInvoke = function(player)
+	local s = sessions[player]
+	if not s then return false end
+	if not s.loaded then return isStudio end -- Studio without API access has nowhere to save, so let tests through
+	return save(player, false) == true
+end
+saveNow.Parent = ServerStorage
 
 Players.PlayerAdded:Connect(onPlayerAdded)
 for _, player in ipairs(Players:GetPlayers()) do task.spawn(onPlayerAdded, player) end

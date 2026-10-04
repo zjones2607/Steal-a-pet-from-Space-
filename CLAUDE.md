@@ -29,7 +29,8 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
 - **Saving**: `src/ServerScriptService/PlayerSaving.server.luau` uses the DataStore `PlayerData_v1` with a per-session lock.
   - To save something new, add a player attribute or folder name to `SAVED_ATTRIBUTES` / `SAVED_FOLDERS`.
   - Other scripts must wait for the player's `DataLoaded` attribute before changing saved data. `PlanetEggCollection`, `CoinPickups` and `Jetpacks` already do.
-  - Saved now: `EggsCollected`, `Coins` and `Jetpack` (attributes), and `EggInventory`, `EggDiscoveries` and `OwnedJetpacks` (folders).
+  - Saved now: `EggsCollected`, `Coins`, `Jetpack`, `CoinBoostEndsAt` and `LuckBoostEndsAt` (attributes), and `EggInventory`, `EggDiscoveries`, `OwnedJetpacks`, `SpaceGUIData` and `PurchaseHistory` (folders).
+  - `ServerStorage.SavePlayerNow` (a BindableFunction) saves one player at once and returns whether it worked. Robux purchases use it.
 - **Coins and jetpacks**: these are the game's main progression.
   - **Coins**: `CoinPickups.server.luau` scatters 18 coins on each planet. They're worth 5/15/40/100/250 on planets 01–05 and reappear elsewhere 15s after pickup. Touching one adds to the player's `Coins` attribute, and `CoinEffects.client.luau` spins the coins and shows "+value" pop-ups.
   - **Jetpack data**: tiers and prices are in `ReplicatedStorage.Jetpacks.JetpackConfig`, and `JetpackModels` builds them from Parts.
@@ -47,8 +48,13 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
   - Only admins get `ServerStorage.AdminPanelClient` copied into their PlayerGui.
   - Every `AdminRemote` request re-checks admin status and validates its arguments. Keep it that way when adding actions to the `actions` table.
   - Announcements are filtered with TextService and shown to everyone by `Announcements.client.luau`.
-- **Not built yet**: pets, boosts and the Robux shop.
-  - `SpaceGUI` has the UI for these, and talks to a `SpaceGUIAction` RemoteEvent and a `SpaceGUIData` folder that no server script creates yet. See `SpaceGUIConfig`.
+- **Pets, boosts and the Robux shop**: `PetsAndShop.server.luau` is the server side of SpaceGUI's Eggs, Pets, Boosts and Shop pages.
+  - It creates the `SpaceGUIAction` RemoteEvent and handles `HatchEgg`, `TogglePet`, `EquipBest`, `UseBoost`, `SetSlowMode` and `GiftItem`. It fires `("Hatched", petId)` and `("Notice", text)` back to the client.
+  - Each player gets a `SpaceGUIData` folder with `Eggs`, `Pets` and `Boosts` (StringValues). `Eggs` is a copy of `EggInventory`, rebuilt on every change.
+  - Hatching uses the odds in `SpaceGUIConfig.Pets`. Pets stack one entry per kind: duplicates raise `Count` and `Power`. Up to 3 are equipped, which sets the player attributes `EquippedPets`, `PetPower` and `CoinMultiplier`. `CoinPickups` multiplies coins by `CoinMultiplier`.
+  - `PetFollowers.client.luau` builds the equipped pets with `SpaceModels` on each device and floats them behind their owner.
+  - Boosts (`CoinBoost`, `LuckBoost`) drop from 15% of hatches. Their end times are saved unix times.
+  - Robux: rewards are in `PRODUCT_REWARDS` and `PASS_KEYS`. Product IDs come from `SpaceGUIConfig`. Speed packs and the x2 Growth pass have no reward yet.
   - SpaceGUI's "Credits" stat shows the player's `Coins`.
 
 ## Working in a cloud session

@@ -1572,13 +1572,14 @@ if Config.OpenShopOnJoin then openPage("Shop", "Featured") end
 
 
 ----------------------------------------------------------------------------
--- HATCH HOOKUP: your server fires ("Hatched", petId); Studio preview key too.
+-- HATCH HOOKUP: your server fires ("Hatched", petId) or ("Notice", text); Studio preview key too.
 ----------------------------------------------------------------------------
 task.spawn(function()
     local remote = ReplicatedStorage:WaitForChild(Config.ActionRemoteName, 30)
     if remote and remote:IsA("RemoteEvent") then
         remote.OnClientEvent:Connect(function(action, value)
-            if action == "Hatched" then showHatch(value) end
+            if action == "Hatched" then showHatch(value)
+            elseif action == "Notice" and type(value) == "string" then toast(value) end
         end)
     end
 end)

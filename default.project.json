@@ -41,6 +41,9 @@
       "PlanetEggCollection": {
         "$path": "src/ServerScriptService/PlanetEggCollection.server.luau"
       },
+      "PetsAndShop": {
+        "$path": "src/ServerScriptService/PetsAndShop.server.luau"
+      },
       "PlayerSaving": {
         "$path": "src/ServerScriptService/PlayerSaving.server.luau"
       },
@@ -115,6 +118,9 @@
         },
         "JetpackHUD": {
           "$path": "src/StarterPlayer/StarterPlayerScripts/JetpackHUD.client.luau"
+        },
+        "PetFollowers": {
+          "$path": "src/StarterPlayer/StarterPlayerScripts/PetFollowers.client.luau"
         },
         "PlanetEggFeedback": {
           "$path": "src/StarterPlayer/StarterPlayerScripts/PlanetEggFeedback.client.luau"

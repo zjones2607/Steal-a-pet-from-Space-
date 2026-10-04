@@ -1,5 +1,6 @@
 -- CoinPickups: scatters coins over each planet's surface. Touching one adds its value to the
--- player's "Coins" attribute (saved by PlayerSaving, spent on jetpacks), and it reappears somewhere
+-- player's "Coins" attribute (saved by PlayerSaving, spent on jetpacks), times their "CoinMultiplier"
+-- (pets and boosts, from PetsAndShop), and it reappears somewhere
 -- else on the planet a little later. Coins on higher planets are worth more, so each new jetpack pays
 -- for the next one faster. StarterPlayerScripts.CoinEffects spins the coins and shows "+value" pop-ups.
 local Players = game:GetService("Players")
@@ -88,8 +89,11 @@ local function setUpPlanet(planet, value)
 			taken = true
 			coin.Transparency = 1
 			coin.CanTouch = false
-			player:SetAttribute(CURRENCY, (player:GetAttribute(CURRENCY) or 0) + value)
-			collectedRemote:FireClient(player, coin.Position, value)
+			-- Equipped pets, the x2 Coins boost and the x2 Credits pass raise this (PetsAndShop works it out)
+			local multiplier = player:GetAttribute("CoinMultiplier")
+			local gained = math.floor(value * (type(multiplier) == "number" and math.max(multiplier, 1) or 1) + 0.5)
+			player:SetAttribute(CURRENCY, (player:GetAttribute(CURRENCY) or 0) + gained)
+			collectedRemote:FireClient(player, coin.Position, gained)
 			task.delay(RESPAWN, function()
 				while not show(coin, planet, surface) do task.wait(2) end
 				taken = false
