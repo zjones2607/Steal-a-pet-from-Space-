@@ -3,16 +3,49 @@
   "tree": {
     "$className": "DataModel",
 
+    "ReplicatedStorage": {
+      "$ignoreUnknownInstances": true,
+      "Jetpacks": {
+        "$className": "Folder",
+        "$ignoreUnknownInstances": true,
+        "JetpackConfig": {
+          "$path": "src/ReplicatedStorage/Jetpacks/JetpackConfig.luau"
+        },
+        "JetpackFlight": {
+          "$path": "src/ReplicatedStorage/Jetpacks/JetpackFlight.luau"
+        },
+        "JetpackModels": {
+          "$path": "src/ReplicatedStorage/Jetpacks/JetpackModels.luau"
+        }
+      },
+      "Shared": {
+        "$className": "Folder",
+        "$ignoreUnknownInstances": true,
+        "Hello": {
+          "$path": "src/ReplicatedStorage/Shared/Hello.luau"
+        }
+      }
+    },
+
     "ServerScriptService": {
       "$ignoreUnknownInstances": true,
       "AdminPanel": {
         "$path": "src/ServerScriptService/AdminPanel.server.luau"
+      },
+      "CoinPickups": {
+        "$path": "src/ServerScriptService/CoinPickups.server.luau"
+      },
+      "Jetpacks": {
+        "$path": "src/ServerScriptService/Jetpacks.server.luau"
       },
       "PlanetEggCollection": {
         "$path": "src/ServerScriptService/PlanetEggCollection.server.luau"
       },
       "PlayerSaving": {
         "$path": "src/ServerScriptService/PlayerSaving.server.luau"
+      },
+      "Server": {
+        "$path": "src/ServerScriptService/Server.server.luau"
       },
       "StationClaims": {
         "$path": "src/ServerScriptService/StationClaims.server.luau"
@@ -36,8 +69,14 @@
       "RideARocketExpansion": {
         "$path": "src/ServerStorage/RideARocketExpansion.luau"
       },
+      "RideARocketLaunchSiteBuilder": {
+        "$path": "src/ServerStorage/RideARocketLaunchSiteBuilder.luau"
+      },
       "RideARocketMapBuilder": {
         "$path": "src/ServerStorage/RideARocketMapBuilder.luau"
+      },
+      "RideARocketMapDetailer": {
+        "$path": "src/ServerStorage/RideARocketMapDetailer.luau"
       }
     },
 
@@ -67,6 +106,12 @@
         "$ignoreUnknownInstances": true,
         "Announcements": {
           "$path": "src/StarterPlayer/StarterPlayerScripts/Announcements.client.luau"
+        },
+        "Client": {
+          "$path": "src/StarterPlayer/StarterPlayerScripts/Client.client.luau"
+        },
+        "CoinEffects": {
+          "$path": "src/StarterPlayer/StarterPlayerScripts/CoinEffects.client.luau"
         },
         "PlanetEggFeedback": {
           "$path": "src/StarterPlayer/StarterPlayerScripts/PlanetEggFeedback.client.luau"

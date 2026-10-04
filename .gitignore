@@ -13,3 +13,6 @@ sourcemap.json
 
 # Rust build output
 /tools/*/target
+
+# graphify knowledge graph output
+/graphify-out/
