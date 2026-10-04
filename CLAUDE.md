@@ -36,11 +36,13 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
   - **Jetpack data**: tiers and prices are in `ReplicatedStorage.Jetpacks.JetpackConfig`, and `JetpackModels` builds them from Parts.
   - **Server**: `Jetpacks.server.luau` creates the `BuyJetpack`, `EquipJetpack`, `JetpackThrust` and `TeleportToLaunchSite` remotes in that folder. It also straps the equipped jetpack to each player's back.
   - **Flying**: it happens on the client in `JetpackFlight`. It only works inside a `LaunchZone`, which `RideARocketLaunchSiteBuilder` puts on each station.
-  - **Shop**: the Jetpacks page in SpaceGUI (4th right-column button, showing your equipped jetpack spinning).
+  - **Shop**: the Jetpacks page in SpaceGUI (4th right-column button, with the vector `Jetpack` icon from `SpaceIcons`).
     - It lists every tier cheapest first, each spinning in a ViewportFrame, with its coin price in a gold pill and a Buy / Equip / Equipped button that calls the remotes.
     - Unowned jetpacks are greyed out and see-through.
     - The page re-renders when coins, the equipped jetpack or `OwnedJetpacks` change.
-  - **Flight controls**: `JetpackHUD.client.luau` has LAUNCH (`Flight.Launch`, also the F key) and MY PAD (teleports to your launch pad, also the T key) at the bottom centre. It's the only script that requires `JetpackFlight`.
+  - **Flight controls**: `JetpackHUD.client.luau` draws cartoon buttons in SpaceGUI's style. It's the only script that requires `JetpackFlight`.
+    - LAUNCH (F key) slides up from the bottom while you stand in a `LaunchZone` and drops away when you leave it. It breathes, a shine sweeps across it, and it turns grey while recharging.
+    - MY PAD (T key) is shown instead while you're off the pad and teleports you to your launch pad.
   - Each tier can climb to just above one planet. The server works out these heights from the planet positions when it starts, as `Ceiling_<Id>` attributes, so moving planets doesn't break flying.
 - **Stations**: `StationClaims.server.luau` gives each joining player the first free `StationPlot1..8` and spawns them on its pad, facing the airlock (also after respawning).
   - Ownership is stored in the plot attributes `OwnerUserId`/`OwnerName` and the player attribute `Station`. Use these to find a player's station or farm.

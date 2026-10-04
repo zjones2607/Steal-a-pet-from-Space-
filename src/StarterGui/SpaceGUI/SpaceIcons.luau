@@ -3,7 +3,7 @@
 -- Put it inside the SpaceGUI ScreenGui next to SpaceGUIController.
 --
 --   Icons.new(name, parent, size) -> Frame (square, size x size pixels)
---   names: Cart Book Star Rocket Coins Egg Helmet Potion Clock Moon Robux Gift Plus Check
+--   names: Cart Book Star Rocket Coins Egg Helmet Potion Clock Moon Robux Gift Plus Check Jetpack
 
 local Icons = {}
 local INK = Color3.fromRGB(3, 8, 30)
@@ -102,6 +102,23 @@ builders.Potion = function(S)
     S(0.4, 0.62, 0.07, 0.07, WHITE, nil, {ink = false, t = 0.2})
     S(0.6, 0.72, 0.05, 0.05, WHITE, nil, {ink = false, t = 0.3})
     S(0.35, 0.5, 0.08, 0.18, WHITE, nil, {rot = 20, ink = false, t = 0.45})
+end
+
+-- Two blue fuel tanks on a white backplate, with red caps, a glowing core and exhaust flames.
+builders.Jetpack = function(S)
+    for _, x in ipairs({0.31, 0.69}) do
+        S(x, 0.9, 0.15, 0.2, rgb(255, 235, 100), rgb(255, 110, 30), {ink = false, rot = 180})
+        S(x, 0.87, 0.07, 0.11, rgb(255, 255, 225), nil, {ink = false})
+        S(x, 0.77, 0.17, 0.09, rgb(120, 130, 160), rgb(60, 66, 92), {r = 0.25})
+    end
+    S(0.5, 0.46, 0.3, 0.64, WHITE, rgb(185, 200, 232), {r = 0.22})
+    for _, x in ipairs({0.31, 0.69}) do
+        S(x, 0.47, 0.25, 0.58, rgb(110, 185, 255), rgb(25, 85, 215), {r = 0.45})
+        S(x, 0.19, 0.19, 0.09, rgb(255, 110, 110), rgb(200, 30, 55), {r = 0.4})
+        S(x - 0.05, 0.44, 0.05, 0.28, WHITE, nil, {ink = false, t = 0.5})
+    end
+    S(0.5, 0.36, 0.14, 0.14, rgb(130, 240, 255), rgb(20, 130, 230), {})
+    S(0.5, 0.6, 0.2, 0.07, rgb(255, 215, 90), rgb(230, 140, 20), {r = 0.3})
 end
 
 builders.Clock = function(S)

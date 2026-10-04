@@ -587,8 +587,8 @@ player:GetAttributeChangedSignal("SpaceSlowMode"):Connect(function()
     applySlow(player:GetAttribute("SpaceSlowMode") == true)
 end)
 
--- Right column: Eggs (live 3D egg), Pets (helmet), Boosts (potion), Jetpacks (your equipped
--- jetpack, spinning). Tooltips on hover/select.
+-- Right column: Eggs (live 3D egg), Pets (helmet), Boosts (potion), Jetpacks (jetpack).
+-- Tooltips on hover/select.
 local function rightButton(index, name)
     local b, face = button(right, name, "", 4, (index - 1) * 102, 86, 86, C.Navy,
         function() openPage(name) end, {rim = C.Cyan, radius = 14, hoverScale = 1.08})
@@ -598,19 +598,7 @@ end
 Models.EggView(rightButton(1, "Eggs"), 1, {Position = UDim2.fromOffset(11, 3), Size = UDim2.fromOffset(64, 68)})
 icon("Helmet", rightButton(2, "Pets"), 12, 8, 62)
 icon("Potion", rightButton(3, "Boosts"), 12, 8, 62)
-if JetpackConfig then
-    local jetFace = rightButton(4, "Jetpacks")
-    local jetView
-    local function showEquippedJetpack()
-        if jetView then jetView.Destroy() end
-        local vp, ctl = Models.View(jetFace, JetpackModels.Build(JetpackConfig.Equipped(player).Id),
-            {Position = UDim2.fromOffset(9, 4), Size = UDim2.fromOffset(68, 68), Margin = 1.15})
-        ctl.Spin(true, "spin")
-        jetView = ctl
-    end
-    showEquippedJetpack()
-    player:GetAttributeChangedSignal(JetpackConfig.EquippedAttribute):Connect(showEquippedJetpack)
-end
+icon("Jetpack", rightButton(4, "Jetpacks"), 12, 8, 62)
 
 -- Stat pills: the whole pill opens the matching shop tab.
 local function statRow(name, iconName, y, color, tabName)
