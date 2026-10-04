@@ -296,18 +296,22 @@ local function buildPet(pen, id, key, floorCF, top, hx, hz)
 	local box
 	box, size = model:GetBoundingBox()
 	local center = CFrame.new(box.Position)
-	local pet = {key = key, id = id, model = model, parts = {}, offsets = {}, half = size.Y / 2}
+	local pet = {key = key, id = id, model = model, half = size.Y / 2}
+	local parts, offsets = {}, {}
 	for _, part in ipairs(model:GetDescendants()) do
 		if part:IsA("BasePart") then
-			part.Anchored = true
 			part.CanCollide = false
 			part.CanQuery = false
 			part.CanTouch = false
 			part.CastShadow = false
-			table.insert(pet.parts, part)
-			table.insert(pet.offsets, center:ToObjectSpace(part.CFrame))
+			table.insert(parts, part)
+			table.insert(offsets, center:ToObjectSpace(part.CFrame))
 		end
 	end
+	-- The whole pet is welded to one invisible anchored part in its middle, so moving that one part
+	-- moves the pet: every frame moves 2 parts per pet (this and the label's) instead of every part.
+	pet.root = new("Part", model, {Name = "PetRoot", Size = Vector3.new(0.2, 0.2, 0.2), Transparency = 1,
+		Anchored = true, CanCollide = false, CanQuery = false, CanTouch = false, CastShadow = false})
 	-- An invisible part the label floats on, so it stays level while the pet hops
 	pet.anchor = new("Part", model, {Name = "LabelAnchor", Size = Vector3.new(0.2, 0.2, 0.2), Transparency = 1,
 		Anchored = true, CanCollide = false, CanQuery = false, CanTouch = false, CastShadow = false})
@@ -325,9 +329,16 @@ local function buildPet(pen, id, key, floorCF, top, hx, hz)
 	pet.walking = false
 	pet.timer = rng:NextNumber(0, IDLE_TIME[2])
 
-	-- In place before it's shown, so it never flashes up somewhere else
+	-- In place before it's shown, so it never flashes up somewhere else. The welds come after: they
+	-- keep the offsets the parts have when the model enters the workspace (as in JetpackModels.Wear).
 	local cf = petFrame(floorCF, top, pet)
-	for i, part in ipairs(pet.parts) do part.CFrame = cf * pet.offsets[i] end
+	pet.root.CFrame = cf
+	for i, part in ipairs(parts) do
+		part.CFrame = cf * offsets[i]
+		part.Anchored = false
+		part.Massless = true
+		new("WeldConstraint", part, {Part0 = pet.root, Part1 = part})
+	end
 	local labelCF = labelFrame(floorCF, top, pet)
 	pet.anchor.CFrame = labelCF
 	pet.labelPos = labelCF.Position
@@ -506,12 +517,9 @@ RunService.Heartbeat:Connect(function(dt)
 		local hx, hz = roamBounds(size)
 		for _, pet in ipairs(pen.pets) do
 			if stepPet(pet, dt, pen.pets, hx, hz) then
-				local cf = petFrame(floorCF, top, pet)
-				for i, part in ipairs(pet.parts) do
-					n += 1
-					moveParts[n] = part
-					moveFrames[n] = cf * pet.offsets[i]
-				end
+				n += 1
+				moveParts[n] = pet.root -- the rest of the pet is welded to it
+				moveFrames[n] = petFrame(floorCF, top, pet)
 				local labelCF = labelFrame(floorCF, top, pet)
 				pet.labelPos = labelCF.Position
 				n += 1

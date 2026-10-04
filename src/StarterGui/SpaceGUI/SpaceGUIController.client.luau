@@ -1423,7 +1423,23 @@ if JetpackConfig then
     local function refreshJetpacks()
         if windowOpen and currentPage == "Jetpacks" then render() end
     end
-    player:GetAttributeChangedSignal(JetpackConfig.CurrencyAttribute):Connect(refreshJetpacks)
+    -- Coins only change the page through which Buy buttons are lit, so it's rebuilt only when that
+    -- changes: pets pay coins every second, and a rebuild every second would flicker the page,
+    -- restart the spins and scroll it back to the top.
+    local function affordable()
+        local coins, ids = JetpackConfig.Coins(player), {}
+        for _, tier in ipairs(JetpackConfig.Tiers) do
+            if coins >= tier.Price then table.insert(ids, tier.Id) end
+        end
+        return table.concat(ids, ",")
+    end
+    local lastAffordable = affordable()
+    player:GetAttributeChangedSignal(JetpackConfig.CurrencyAttribute):Connect(function()
+        local key = affordable()
+        if key == lastAffordable then return end
+        lastAffordable = key
+        refreshJetpacks()
+    end)
     player:GetAttributeChangedSignal(JetpackConfig.EquippedAttribute):Connect(refreshJetpacks)
     local function watchOwned(child)
         if child.Name ~= JetpackConfig.OwnedFolder then return end
@@ -1630,6 +1646,19 @@ end
 player:GetAttributeChangedSignal("PetIncome"):Connect(updateIncome)
 updateIncome()
 
+-- Credits show the exact amount ("12,345") below a million, so the count-up is visible: formatNumber's
+-- "12.3K" would only change every 100 coins. Bigger amounts are shortened with two decimals ("1.23M").
+local function formatCredits(value)
+    local n = math.floor(tonumber(value) or 0)
+    for _, item in ipairs({{1e15, "Q"}, {1e12, "T"}, {1e9, "B"}, {1e6, "M"}}) do
+        if math.abs(n) >= item[1] then
+            return (string.format("%.2f", n / item[1]):gsub("0+$", ""):gsub("%.$", "")) .. item[2]
+        end
+    end
+    local digits = tostring(math.abs(n)):reverse():gsub("(%d%d%d)", "%1,"):reverse()
+    return (n < 0 and "-" or "") .. digits:gsub("^,", "")
+end
+
 local creditFrom, creditTo, creditShown, creditStart
 local function setCreditTarget(value)
     if creditTo == nil then -- first reading: show it straight away
@@ -1657,7 +1686,7 @@ task.spawn(function()
             creditShown = creditFrom + (creditTo - creditFrom) * (1 - (1 - t) ^ 2)
         end
         -- Rounded while rolling, so the last step doesn't hang on the number below the target.
-        local text = formatNumber(t >= 1 and creditTo or math.floor(creditShown + 0.5))
+        local text = formatCredits(t >= 1 and creditTo or math.floor(creditShown + 0.5))
         if creditLabel.Text ~= text then creditLabel.Text = text end
         task.wait()
     end
