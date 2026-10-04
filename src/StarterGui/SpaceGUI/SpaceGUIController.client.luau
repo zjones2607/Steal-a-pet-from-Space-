@@ -22,6 +22,11 @@ local gui = script.Parent
 local Config = require(gui:WaitForChild("SpaceGUIConfig"))
 local Icons = require(gui:WaitForChild("SpaceIcons"))
 local Models = require(gui:WaitForChild("SpaceModels"))
+-- Jetpacks page: tiers, prices and 3D models come from ReplicatedStorage.Jetpacks; buying and
+-- equipping go through its BuyJetpack / EquipJetpack remotes (ServerScriptService.Jetpacks).
+local jetpackFolder = ReplicatedStorage:WaitForChild("Jetpacks", 10)
+local JetpackConfig = jetpackFolder and require(jetpackFolder:WaitForChild("JetpackConfig"))
+local JetpackModels = jetpackFolder and require(jetpackFolder:WaitForChild("JetpackModels"))
 
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = false
@@ -533,7 +538,7 @@ local left = frame(hud, "LeftMenu", 14, 0, 190, 244)
 left.AnchorPoint = Vector2.new(0, 0.5)
 left.Position = UDim2.new(0, 14, 0.47, 0)
 local leftScale = new("UIScale", left, {Scale = 1})
-local right = frame(hud, "RightMenu", 0, 0, 94, 290)
+local right = frame(hud, "RightMenu", 0, 0, 94, 392)
 right.AnchorPoint = Vector2.new(1, 0.5)
 right.Position = UDim2.new(1, -14, 0.47, 0)
 local rightScale = new("UIScale", right, {Scale = 1})
@@ -582,7 +587,8 @@ player:GetAttributeChangedSignal("SpaceSlowMode"):Connect(function()
     applySlow(player:GetAttribute("SpaceSlowMode") == true)
 end)
 
--- Right column: Eggs (live 3D egg), Pets (helmet), Boosts (potion). Tooltips on hover/select.
+-- Right column: Eggs (live 3D egg), Pets (helmet), Boosts (potion), Jetpacks (your equipped
+-- jetpack, spinning). Tooltips on hover/select.
 local function rightButton(index, name)
     local b, face = button(right, name, "", 4, (index - 1) * 102, 86, 86, C.Navy,
         function() openPage(name) end, {rim = C.Cyan, radius = 14, hoverScale = 1.08})
@@ -592,6 +598,19 @@ end
 Models.EggView(rightButton(1, "Eggs"), 1, {Position = UDim2.fromOffset(11, 3), Size = UDim2.fromOffset(64, 68)})
 icon("Helmet", rightButton(2, "Pets"), 12, 8, 62)
 icon("Potion", rightButton(3, "Boosts"), 12, 8, 62)
+if JetpackConfig then
+    local jetFace = rightButton(4, "Jetpacks")
+    local jetView
+    local function showEquippedJetpack()
+        if jetView then jetView.Destroy() end
+        local vp, ctl = Models.View(jetFace, JetpackModels.Build(JetpackConfig.Equipped(player).Id),
+            {Position = UDim2.fromOffset(9, 4), Size = UDim2.fromOffset(68, 68), Margin = 1.15})
+        ctl.Spin(true, "spin")
+        jetView = ctl
+    end
+    showEquippedJetpack()
+    player:GetAttributeChangedSignal(JetpackConfig.EquippedAttribute):Connect(showEquippedJetpack)
+end
 
 -- Stat pills: the whole pill opens the matching shop tab.
 local function statRow(name, iconName, y, color, tabName)
@@ -1070,7 +1089,81 @@ local function makeIndex()
     end
 end
 
-local function emptyState(kind, heading, description)
+local emptyState
+-- Jetpacks page: every jetpack on display, cheapest first. Owned ones are solid, the rest are
+-- see-through and grey until bought. The server checks coins and ownership on every request.
+local jetpackBusy = false
+local function jetpackRequest(remoteName, tier)
+    if jetpackBusy then return end
+    local remote = jetpackFolder:FindFirstChild(remoteName)
+    if not remote then toast("Jetpacks are still loading, try again in a moment.") return end
+    jetpackBusy = true
+    local ok, success, message = pcall(remote.InvokeServer, remote, tier.Id)
+    jetpackBusy = false
+    if not ok then toast("Couldn't reach the server, try again.")
+    elseif message then toast(message) end
+    if ok and success then playSound("Purchase") end
+end
+local function makeJetpacks()
+    section("JETPACKS", 1)
+    if not JetpackConfig then
+        emptyState("Boosts", "Jetpacks are loading", "Close this and open it again in a moment.")
+        return
+    end
+    local tiers = table.clone(JetpackConfig.Tiers)
+    table.sort(tiers, function(a, b) return a.Price < b.Price end)
+    local coins = JetpackConfig.Coins(player)
+    local equipped = JetpackConfig.Equipped(player)
+    local columns = bodyWidth >= 780 and 3 or 2
+    local gap = 14
+    local w = math.floor((bodyWidth - (columns - 1) * gap) / columns)
+    local artH = math.floor((w - 12) * 0.8)
+    local tileH = artH + 176
+    local rows = math.ceil(#tiers / columns)
+    local box = frame(pages, "JetpackGrid", 0, 0, bodyWidth, rows * (tileH + gap))
+    box.LayoutOrder = 2
+    for i, tier in ipairs(tiers) do
+        local owned = JetpackConfig.Owns(tier, player)
+        local col = RarityColor[tier.Rarity] or C.Cyan
+        local x = ((i - 1) % columns) * (w + gap)
+        local y = math.floor((i - 1) / columns) * (tileH + gap)
+        local tile = panel(box, tier.Id, x, y, w, tileH, owned and Color3.fromRGB(34, 46, 126) or Color3.fromRGB(30, 34, 70),
+            C.Deep, owned and col or Color3.fromRGB(70, 76, 110), 14)
+        if not owned then tile.BackgroundTransparency = 0.35 end
+        aura(tile, w / 2, 6 + artH / 2, math.min(w - 12, artH) * 0.95, col, owned and 0.72 or 0.94)
+        local vp, ctl = Models.View(tile, JetpackModels.Build(tier.Id, {Flames = owned}), {Position = UDim2.fromOffset(6, 6),
+            Size = UDim2.fromOffset(w - 12, artH), Aspect = (w - 12) / artH, Margin = 1.2,
+            Tint = owned and Color3.new(1, 1, 1) or Color3.fromRGB(120, 125, 150)})
+        if not owned then vp.ImageTransparency = 0.5 end
+        ctl.Spin(true, "spin")
+        local name = label(tile, "Name", tier.Name, 4, artH + 8, w - 8, 30, narrow and 20 or 24, owned and C.White or C.Muted, CENTER)
+        label(tile, "Detail", tier.Rarity .. "  -  reaches " .. JetpackConfig.PlanetLabel(tier), 4, artH + 38, w - 8, 24,
+            narrow and 15 or 17, owned and col or col:Lerp(C.Muted, 0.5), CENTER)
+        -- Coin price in a rounded pill
+        local pillW = math.min(w - 24, 170)
+        local pill = new("Frame", tile, {Name = "Price", BackgroundColor3 = C.White, BorderSizePixel = 0,
+            Position = UDim2.fromOffset((w - pillW) / 2, artH + 68), Size = UDim2.fromOffset(pillW, 42)})
+        corner(pill, 21)
+        vgrad(pill, owned and Color3.fromRGB(255, 236, 120) or Color3.fromRGB(150, 145, 120), owned and C.GoldDeep or Color3.fromRGB(110, 100, 80))
+        stroke(pill, C.Ink, 3)
+        icon("Coins", pill, 8, 5, 32)
+        label(pill, "Amount", tier.Price <= 0 and "FREE" or formatNumber(tier.Price), 42, 0, pillW - 52, 42, 24, C.White, CENTER)
+        -- Buy / Equip / Equipped
+        local text, color, action
+        if equipped == tier then
+            text, color = "Equipped", C.Green
+        elseif owned then
+            text, color, action = "Equip", C.Blue, function() jetpackRequest("EquipJetpack", tier) end
+        else
+            text, color = "Buy", coins >= tier.Price and C.Purple or Color3.fromRGB(80, 84, 110)
+            action = function() jetpackRequest("BuyJetpack", tier) end
+        end
+        button(tile, "Action", text, 12, artH + 120, w - 24, 50, color, action, {rim = C.Cyan, textSize = 24})
+        if not owned then name.TextTransparency = 0.15 end
+    end
+end
+
+emptyState = function(kind, heading, description)
     local box = panel(pages, "EmptyState", 0, 0, bodyWidth, 380, Color3.fromRGB(34, 46, 126), C.Deep, C.Purple, 18)
     box.LayoutOrder = 2
     aura(box, bodyWidth / 2, 96, 190, C.Purple, 0.82)
@@ -1305,6 +1398,7 @@ render = function()
         elseif currentTab == "Speed" then makePacks(Config.SpeedPacks, "Speed", C.Cyan)
         else makePacks(Config.CreditPacks, "Credits", C.Gold) end
     elseif currentPage == "Index" then makeIndex()
+    elseif currentPage == "Jetpacks" then makeJetpacks()
     else makeInventory(currentPage) end
     refreshPrices()
     if updateTimers then updateTimers() end
@@ -1337,6 +1431,20 @@ resize = function()
     if windowOpen and (layoutChanged or math.abs(m.bodyWidth - (builtWidth or 0)) > 6) then render() end
 end
 root:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() resize() end)
+if JetpackConfig then
+    local function refreshJetpacks()
+        if windowOpen and currentPage == "Jetpacks" then render() end
+    end
+    player:GetAttributeChangedSignal(JetpackConfig.CurrencyAttribute):Connect(refreshJetpacks)
+    player:GetAttributeChangedSignal(JetpackConfig.EquippedAttribute):Connect(refreshJetpacks)
+    local function watchOwned(child)
+        if child.Name ~= JetpackConfig.OwnedFolder then return end
+        child.ChildAdded:Connect(refreshJetpacks)
+        child.ChildRemoved:Connect(refreshJetpacks)
+    end
+    player.ChildAdded:Connect(watchOwned)
+    for _, child in ipairs(player:GetChildren()) do watchOwned(child) end
+end
 
 ----------------------------------------------------------------------------
 -- OPEN / CLOSE  (spring pop, dimmed background, gamepad focus)
