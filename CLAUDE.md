@@ -10,6 +10,7 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
   - Edit scripts in `src/`, not in Studio: a connected Rojo overwrites Studio with the repo version. Every script in the place is in the repo except two disabled backups in `ServerStorage` (`RemovedMapBackups`, `SpaceGUI_Backup_v1`).
   - Windows checkouts use CRLF (`core.autocrlf`) while Studio uses LF, so file sizes differ from Studio's by one byte per line even when the code is identical.
   - `ReplicatedStorage.Shared.Hello`, `ServerScriptService.Server` and `StarterPlayerScripts.Client` are leftovers from Rojo's template that only print "Hello world". They're safe to delete.
+- **Never edit a Rojo-managed script inside Studio.** Rojo overwrites it with the repo copy the next time anyone connects, and the Studio edit is lost. Change the file in `src/` instead.
 - **Everything else** (map, parts, GUI instances) lives only in the Studio place. `game.rbxl` is a snapshot of it, but it's **stale**: it predates the plaza/wall/farm expansion. Don't assume it shows the current map.
 - **Map changes are made with builder scripts in `src/ServerStorage`**, not by hand. The developer runs one command in Studio's command bar in edit mode (not Play), then saves/publishes.
   - `RideARocketBaseBuilder`: built the space station base. The layout constants are at the top: `Y0=8`, `R_PLOT=272`, `PLOT_R=81.6`, `HUB_R=50`.
@@ -28,12 +29,13 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
 - **Saving**: `src/ServerScriptService/PlayerSaving.server.luau` uses the DataStore `PlayerData_v1` with a per-session lock.
   - To save something new, add a player attribute or folder name to `SAVED_ATTRIBUTES` / `SAVED_FOLDERS`.
   - Other scripts must wait for the player's `DataLoaded` attribute before changing saved data. `PlanetEggCollection`, `CoinPickups` and `Jetpacks` already do.
-  - **Known bug**: the coin and jetpack scripts expect `Coins`, `Jetpack` and `OwnedJetpacks` to be saved, but the lists only hold the egg data, so coins and jetpacks reset when a player rejoins.
+  - Saved now: `EggsCollected`, `Coins` and `Jetpack` (attributes), and `EggInventory`, `EggDiscoveries` and `OwnedJetpacks` (folders).
 - **Coins and jetpacks**: these are the game's main progression.
   - **Coins**: `CoinPickups.server.luau` scatters 18 coins on each planet. They're worth 5/15/40/100/250 on planets 01–05 and reappear elsewhere 15s after pickup. Touching one adds to the player's `Coins` attribute, and `CoinEffects.client.luau` spins the coins and shows "+value" pop-ups.
   - **Jetpack data**: tiers and prices are in `ReplicatedStorage.Jetpacks.JetpackConfig`, and `JetpackModels` builds them from Parts.
   - **Server**: `Jetpacks.server.luau` creates the `BuyJetpack`, `EquipJetpack`, `JetpackThrust` and `TeleportToLaunchSite` remotes in that folder. It also straps the equipped jetpack to each player's back.
   - **Flying**: it happens on the client in `JetpackFlight`, which is triggered by SpaceGUI's LAUNCH button. It only works inside a `LaunchZone`.
+  - **Missing UI**: nothing in the repo's `SpaceGUIController` requires `JetpackFlight` or shows a Jetpacks page or LAUNCH button. That UI was added to SpaceGUI inside Studio, and Rojo replaced it with the older repo copy. Recover it from Studio's version history (or rebuild it) before relying on it.
   - Each tier can climb to just above one planet. The server works out these heights from the planet positions when it starts, as `Ceiling_<Id>` attributes, so moving planets doesn't break flying.
 - **Stations**: `StationClaims.server.luau` gives each joining player the first free `StationPlot1..8` and spawns them on its pad, facing the airlock (also after respawning).
   - Ownership is stored in the plot attributes `OwnerUserId`/`OwnerName` and the player attribute `Station`. Use these to find a player's station or farm.
