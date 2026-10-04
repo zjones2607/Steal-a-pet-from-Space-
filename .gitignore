@@ -10,3 +10,6 @@ sourcemap.json
 
 # macOS
 .DS_Store
+
+# Rust build output
+/tools/*/target
