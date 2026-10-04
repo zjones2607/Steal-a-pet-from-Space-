@@ -15,10 +15,13 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
 - **Map changes are made with builder scripts in `src/ServerStorage`**, not by hand. The developer runs one command in Studio's command bar in edit mode (not Play), then saves/publishes.
   - `RideARocketBaseBuilder`: built the space station base. The layout constants are at the top: `Y0=8`, `R_PLOT=272`, `PLOT_R=81.6`, `HUB_R=50`.
   - `RideARocketExpansion`: run with `require(game.ServerStorage.RideARocketExpansion).Apply()`.
-    - It grows the spawn plaza (radius 80), moves the wall out (~417), and adds a 110×51 farm behind each of the 8 stations, parented to `StationPlot<i>.Farm`, with `CropSlot` attributes on each crop.
-    - It's versioned through the `ExpansionVersion` attribute on `SpaceStation`. Every step is idempotent, so to change the farms, edit `buildFarm`, bump `VERSION`, and have them run `Apply()` again.
-    - The current version is 3. The owner has run at least v2.
+    - It grows the spawn plaza (radius 80) and moves the wall out (~417). It also builds a fenced 110×51 pet pen behind each of the 8 stations: `StationPlot<i>.PetPen`, whose `Floor` part is the walkable grass slab. The fence opening faces the station.
+    - v4 replaced the old crop farms (`Farm`) with these pens. It moves any MapDetailer decor that lands inside a pen to `ServerStorage.RemovedMapBackups.Decor_InPetPens`. After re-running the MapDetailer, run `Apply({force = true})`.
+    - It's versioned through the `ExpansionVersion` attribute on `SpaceStation`. Every step is idempotent, so to change the pens, edit `buildPen`, bump `VERSION`, and have them run `Apply()` again.
+    - The current version is 4. The owner has run at least v3.
   - `RideARocketLaunchSiteBuilder`: run with `require(game.ServerStorage.RideARocketLaunchSiteBuilder).Apply()` (`Revert()` undoes it).
+    - Each site has a cartoon `LaunchPadSign` on the gantry: a marquee-lit board with a SurfaceGui. Every part of the sign is non-collidable decoration.
+    - Rebuilt sites keep the MapDetailer's metal finishes (`OriginalMaterial`).
     - It swaps the satellite on each base (`StationPlotN.Core.SS_*`) for a jetpack launch site, and keeps the old parts in `ServerStorage.RemovedMapBackups.Satellites_BeforeLaunchSites`.
     - Each site has an invisible `LaunchZone` part tagged `LaunchZone`, with a `SpawnPoint` attachment for the base teleport.
     - Run it again after re-running `RideARocketBaseBuilder`.
@@ -50,7 +53,7 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
   - Ownership is stored in the plot attributes `OwnerUserId`/`OwnerName` and the player attribute `Station`. Use these to find a player's station or farm.
   - An `OwnerSign` billboard above each claimed station shows only the owner's username; it's hidden on free stations. `StationOwnerLabels.client.luau` turns your own sign gold.
   - A station's tier resets to 0 when its owner leaves. A 9th player gets no station and stays at the plaza, so max players should be 8.
-- **Admin panel**: `AdminPanel.server.luau` decides who's an admin when they join. That's the game owner (or group rank 254+), `ADMIN_USERNAMES`, and any real account in Studio.
+- **Admin panel**: `AdminPanel.server.luau` decides who's an admin when they join. That's the game owner (or group rank 254+), `ADMIN_USERNAMES` (includes the owner, `ZJONES262007`), and every player in Studio, including the negative-UserId test players from Test > Clients.
   - Only admins get `ServerStorage.AdminPanelClient` copied into their PlayerGui.
   - Every `AdminRemote` request re-checks admin status and validates its arguments. Keep it that way when adding actions to the `actions` table.
   - Announcements are filtered with TextService and shown to everyone by `Announcements.client.luau`.
@@ -58,10 +61,19 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
   - It creates the `SpaceGUIAction` RemoteEvent and handles `HatchEgg`, `TogglePet`, `EquipBest`, `UseBoost`, `SetSlowMode` and `GiftItem`. It fires `("Hatched", petId)` and `("Notice", text)` back to the client.
   - Each player gets a `SpaceGUIData` folder with `Eggs`, `Pets` and `Boosts` (StringValues). `Eggs` is a copy of `EggInventory`, rebuilt on every change.
   - Hatching uses the odds in `SpaceGUIConfig.Pets`. Pets stack one entry per kind: duplicates raise `Count` and `Power`. Up to 3 are equipped, which sets the player attributes `EquippedPets`, `PetPower` and `CoinMultiplier`. `CoinPickups` multiplies coins by `CoinMultiplier`.
-  - `PetFollowers.client.luau` builds the equipped pets with `SpaceModels` on each device and floats them behind their owner.
+  - **Pet income**: equipped pets earn coins every second. Each `SpaceGUIConfig.Pets` entry has `Income` (coins/s per copy), and `refresh()` sets three player attributes:
+    - `PenPets`: "id:count,..." for the equipped pets
+    - `IncomeMultiplier`: x2 for the Coins boost, x2 for the Credits pass
+    - `PetIncome`: the total coins/s
+    - The 1-second loop adds `PetIncome` to `Coins`, but only for players whose data has loaded.
+  - **Pens**: `PetPens.client.luau` builds every claimed station's equipped pets (each copy, up to 30) from `SpaceModels` on each device.
+    - They roam inside `PetPen.Floor`, each with a name and "+N/s" billboard.
+    - Only pens near the camera are animated.
+    - Unequipped pets stay in the inventory only.
+    - `PetFollowers.client.luau` is a retired no-op stub (pets no longer follow players) and can be deleted.
   - Boosts (`CoinBoost`, `LuckBoost`) drop from 15% of hatches. Their end times are saved unix times.
   - Robux: rewards are in `PRODUCT_REWARDS` and `PASS_KEYS`. Product IDs come from `SpaceGUIConfig`. Speed packs and the x2 Growth pass have no reward yet.
-  - SpaceGUI's "Credits" stat shows the player's `Coins`.
+  - SpaceGUI's "Credits" stat shows the player's `Coins`. It counts up smoothly, and shows a green "+N/s" badge from `PetIncome`.
 
 ## Working in a cloud session
 
