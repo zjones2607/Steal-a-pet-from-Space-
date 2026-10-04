@@ -6,8 +6,8 @@ local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
 local RunService = game:GetService("RunService")
 
-local SAVED_ATTRIBUTES = {"EggsCollected"}
-local SAVED_FOLDERS = {"EggInventory", "EggDiscoveries"}
+local SAVED_ATTRIBUTES = {"EggsCollected", "Coins", "Jetpack"}
+local SAVED_FOLDERS = {"EggInventory", "EggDiscoveries", "OwnedJetpacks"}
 local STORE_NAME = "PlayerData_v1"
 local AUTOSAVE_EVERY = 120
 local LOCK_WAITS = 6          -- times to wait 5s for another server to finish saving before taking over
