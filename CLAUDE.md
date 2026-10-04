@@ -17,6 +17,10 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
 - **Saving**: `src/ServerScriptService/PlayerSaving.server.luau` uses the DataStore `PlayerData_v1` with a per-session lock.
   - To save something new, add a player attribute or folder name to `SAVED_ATTRIBUTES` / `SAVED_FOLDERS`.
   - Other scripts must wait for the player's `DataLoaded` attribute before changing saved data. `PlanetEggCollection` already does.
+- **Stations**: `StationClaims.server.luau` gives each joining player the first free `StationPlot1..8` and spawns them on its pad, facing the airlock (also after respawning).
+  - Ownership is stored in the plot attributes `OwnerUserId`/`OwnerName` and the player attribute `Station`. Use these to find a player's station or farm.
+  - An `OwnerSign` billboard above each station shows the owner's name. `StationOwnerLabels.client.luau` turns your own sign gold.
+  - A station's tier resets to 0 when its owner leaves. A 9th player gets no station and stays at the plaza, so max players should be 8.
 - **Not built yet**: Credits, pets, boosts and the shop. `SpaceGUI` has the UI for these and talks to a `SpaceGUIAction` RemoteEvent and a `SpaceGUIData` folder that no server script creates yet. See `SpaceGUIConfig`.
 
 ## Working in a cloud session

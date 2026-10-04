@@ -11,6 +11,9 @@
       "PlayerSaving": {
         "$path": "src/ServerScriptService/PlayerSaving.server.luau"
       },
+      "StationClaims": {
+        "$path": "src/ServerScriptService/StationClaims.server.luau"
+      },
       "StationTierInit": {
         "$path": "src/ServerScriptService/StationTierInit.server.luau"
       },
@@ -58,6 +61,9 @@
         "$ignoreUnknownInstances": true,
         "PlanetEggFeedback": {
           "$path": "src/StarterPlayer/StarterPlayerScripts/PlanetEggFeedback.client.luau"
+        },
+        "StationOwnerLabels": {
+          "$path": "src/StarterPlayer/StarterPlayerScripts/StationOwnerLabels.client.luau"
         }
       }
     }
