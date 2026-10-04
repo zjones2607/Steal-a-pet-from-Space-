@@ -34,10 +34,8 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
   - **Coins**: `CoinPickups.server.luau` scatters 18 coins on each planet. They're worth 5/15/40/100/250 on planets 01–05 and reappear elsewhere 15s after pickup. Touching one adds to the player's `Coins` attribute, and `CoinEffects.client.luau` spins the coins and shows "+value" pop-ups.
   - **Jetpack data**: tiers and prices are in `ReplicatedStorage.Jetpacks.JetpackConfig`, and `JetpackModels` builds them from Parts.
   - **Server**: `Jetpacks.server.luau` creates the `BuyJetpack`, `EquipJetpack`, `JetpackThrust` and `TeleportToLaunchSite` remotes in that folder. It also straps the equipped jetpack to each player's back.
-  - **Flying**: it happens on the client in `JetpackFlight`. It only works inside a `LaunchZone`, which `RideARocketLaunchSiteBuilder` puts on each station.
-  - **Controls**: `JetpackHUD.client.luau` is the jetpack UI, kept separate from SpaceGUI. It's the only script that requires `JetpackFlight`.
-    - A bottom row has JETPACKS (a shop to buy and equip tiers through the remotes), LAUNCH (`Flight.Launch`, also the F key) and MY PAD (teleports to your launch pad, also the T key).
-    - SpaceGUI has no jetpack UI. An older one built in Studio was lost to a Rojo overwrite.
+  - **Flying**: it happens on the client in `JetpackFlight`, which is triggered by SpaceGUI's LAUNCH button. It only works inside a `LaunchZone`.
+  - **Jetpack UI**: `SpaceGUIController` has the Jetpacks page (left menu: 3D previews, stats, Buy/Equip) and the bottom-middle bar with the LAUNCH button (F / gamepad X) and the rocket button that teleports to your launch pad (T / gamepad LT). The original Studio-built version was lost to Rojo and rebuilt in the repo.
   - Each tier can climb to just above one planet. The server works out these heights from the planet positions when it starts, as `Ceiling_<Id>` attributes, so moving planets doesn't break flying.
 - **Stations**: `StationClaims.server.luau` gives each joining player the first free `StationPlot1..8` and spawns them on its pad, facing the airlock (also after respawning).
   - Ownership is stored in the plot attributes `OwnerUserId`/`OwnerName` and the player attribute `Station`. Use these to find a player's station or farm.

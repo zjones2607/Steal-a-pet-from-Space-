@@ -22,6 +22,12 @@ local gui = script.Parent
 local Config = require(gui:WaitForChild("SpaceGUIConfig"))
 local Icons = require(gui:WaitForChild("SpaceIcons"))
 local Models = require(gui:WaitForChild("SpaceModels"))
+-- Jetpacks (ReplicatedStorage.Jetpacks): tiers and prices, the 3D models and the flying itself.
+-- ServerScriptService.Jetpacks adds the BuyJetpack / EquipJetpack / TeleportToLaunchSite remotes.
+local jetpackFolder = ReplicatedStorage:WaitForChild("Jetpacks")
+local JetpackConfig = require(jetpackFolder:WaitForChild("JetpackConfig"))
+local JetpackModels = require(jetpackFolder:WaitForChild("JetpackModels"))
+local Flight = require(jetpackFolder:WaitForChild("JetpackFlight"))
 
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = false
@@ -211,6 +217,7 @@ local currentTab = "Featured"
 local builtWidth
 local Lm = {titleH = 76, tabRowH = 84, hint = 0, W = 940, H = 700, extra = TAB_W + 14, scale = 1, hs = 1, LW = 1500, LH = 850}
 local openPage, closeWindow, layoutWindow, render, selectTab, resize, updateTimers, updateHints
+local teleportToBase, launchJetpack
 local bannerTimer -- TextLabel on the featured banner (if built)
 local featuredEnd -- unix seconds, set in the timers section
 
@@ -361,7 +368,7 @@ local function toast(message)
     noticeText.Text = message
     notice.Visible = true
     notice.Position = UDim2.new(0.5, 0, 1, 90)
-    tween(notice, 0.35, {Position = UDim2.new(0.5, 0, 1, -24)}, Enum.EasingStyle.Back)
+    tween(notice, 0.35, {Position = UDim2.new(0.5, 0, 1, -130)}, Enum.EasingStyle.Back)
     task.delay(3.5, function()
         if current == noticeCount and notice.Parent then
             tween(notice, 0.25, {Position = UDim2.new(0.5, 0, 1, 90)}, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
@@ -529,7 +536,7 @@ end
 ----------------------------------------------------------------------------
 -- HUD: left menu, right menu, stats, moon timer   (all vector + 3D, no images)
 ----------------------------------------------------------------------------
-local left = frame(hud, "LeftMenu", 14, 0, 190, 244)
+local left = frame(hud, "LeftMenu", 14, 0, 190, 340)
 left.AnchorPoint = Vector2.new(0, 0.5)
 left.Position = UDim2.new(0, 14, 0.47, 0)
 local leftScale = new("UIScale", left, {Scale = 1})
@@ -549,10 +556,13 @@ local function menuButton(name, text, iconName, y, color, targetPage)
     icon(iconName, face, 8, 6, 64)
     lbl.Position = UDim2.fromOffset(72, 0)
     lbl.Size = UDim2.new(1, -76, 1, 0)
-    return b
+    return b, lbl
 end
 local shopBtn = menuButton("Shop", "Shop", "Cart", 0, C.Purple, "Shop")
-menuButton("Index", "Index", "Book", 96, Color3.fromRGB(24, 128, 226), "Index")
+local _, jetpackMenuLabel = menuButton("Jetpacks", "Jetpacks", "Rocket", 96, Color3.fromRGB(240, 110, 40), "Jetpacks")
+jetpackMenuLabel.TextScaled = true -- "Jetpacks" is too long for the shared 36px size
+new("UITextSizeConstraint", jetpackMenuLabel, {MaxTextSize = 36})
+menuButton("Index", "Index", "Book", 192, Color3.fromRGB(24, 128, 226), "Index")
 local shopKeyCap = keycap(shopBtn, "B", Color3.fromRGB(70, 80, 120), "key", 0)
 shopKeyCap.AnchorPoint = Vector2.new(1, 0)
 shopKeyCap.Position = UDim2.new(1, 6, 0, -8)
@@ -560,7 +570,7 @@ shopKeyCap.ZIndex = 6
 
 -- Slow Mode: toggle switch with a sliding knob.
 local slowBtn = new("TextButton", left, {Name = "SlowMode", Text = "", AutoButtonColor = false,
-    BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 196), Size = UDim2.fromOffset(184, 46),
+    BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 292), Size = UDim2.fromOffset(184, 46),
     SelectionImageObject = selectionCursor})
 local track = panel(slowBtn, "Track", 3, 4, 88, 38, C.Deep, C.Navy, C.Cyan, 12)
 local knob = panel(track, "Knob", 4, 4, 38, 30, Color3.fromRGB(120, 235, 255), C.Cyan, nil, 9)
@@ -614,6 +624,33 @@ moonPill.Visible = false
 local moonScale = new("UIScale", moonPill, {Scale = 1})
 icon("Moon", moonPill, 8, 7, 44)
 local moonText = label(moonPill, "Text", "", 60, 0, 154, 58, 26, C.White)
+
+-- Jetpack bar (bottom middle): Base teleports to your own launch pad, LAUNCH flies (JetpackFlight).
+-- Launching only works on a launch pad; the LAUNCH button glows while you stand on one.
+local LAUNCH_COLOR = Color3.fromRGB(255, 120, 40)
+local launchBar = frame(hud, "JetpackBar", 0, 0, 326, 96)
+launchBar.AnchorPoint = Vector2.new(0.5, 1)
+launchBar.Position = UDim2.new(0.5, 0, 1, -18)
+local launchScale = new("UIScale", launchBar, {Scale = 1})
+local launchGlow = new("Frame", launchBar, {Name = "PadGlow", BackgroundColor3 = C.Gold, BorderSizePixel = 0,
+    Position = UDim2.fromOffset(94, -6), Size = UDim2.fromOffset(238, 104), Visible = false})
+corner(launchGlow, 20)
+loop(launchGlow, 0.7, {BackgroundTransparency = 0.75}, true)
+local launchBtn, _, launchLabel
+local baseBtn, baseFace = button(launchBar, "Base", "", 0, 4, 86, 86, C.Navy,
+    function() teleportToBase() end, {rim = C.Cyan, radius = 14, hoverScale = 1.08})
+icon("Rocket", baseFace, 12, 2, 62)
+attachTip(baseBtn, "Go to your launch pad")
+launchBtn, _, launchLabel = button(launchBar, "Launch", "LAUNCH", 100, 0, 226, 92, LAUNCH_COLOR,
+    function() launchJetpack() end, {rim = C.Gold, radius = 16, textSize = 40, hoverScale = 1.05})
+local launchCap = keycap(launchBtn, "F", Color3.fromRGB(70, 80, 120), "key", 0)
+launchCap.AnchorPoint = Vector2.new(1, 0)
+launchCap.Position = UDim2.new(1, 6, 0, -8)
+launchCap.ZIndex = 6
+local baseCap = keycap(baseBtn, "T", Color3.fromRGB(70, 80, 120), "key", 0)
+baseCap.AnchorPoint = Vector2.new(1, 0)
+baseCap.Position = UDim2.new(1, 6, 0, -8)
+baseCap.ZIndex = 6
 
 ----------------------------------------------------------------------------
 -- WINDOW SHELL
@@ -776,6 +813,10 @@ updateHints = function()
     elseif inputMode == "Keyboard" then
         hintItem(1, {{"B", gray, "key"}}, "Open / close")
     end
+    launchCap.Visible = inputMode ~= "Touch"
+    baseCap.Visible = inputMode ~= "Touch"
+    launchCap.T.Text = inputMode == "Gamepad" and "X" or "F"
+    baseCap.T.Text = inputMode == "Gamepad" and "LT" or "T"
 end
 
 
@@ -1143,6 +1184,95 @@ local function makeInventory(category)
     end
 end
 
+-- Jetpacks page: every tier with a 3D preview, what it reaches, its stats and Buy / Equip.
+-- Buying and equipping go through the server (ServerScriptService.Jetpacks), which checks the coins.
+local jetpackBusy = false
+local function jetpackRequest(remoteName, tier)
+    if jetpackBusy then return end
+    local remote = jetpackFolder:FindFirstChild(remoteName)
+    if not remote then toast("Jetpacks are still loading, try again in a moment.") return end
+    jetpackBusy = true
+    local ok, success, message = pcall(remote.InvokeServer, remote, tier.Id)
+    jetpackBusy = false
+    if not ok then toast("Something went wrong, try again.") return end
+    if message then toast(message) end
+    if success then playSound("Open") end
+end
+
+local function statBar(parent, name, text, x, y, w, fill, color)
+    label(parent, name, text, x, y, w, 24, 18, C.Muted)
+    local track = panel(parent, name .. "Bar", x, y + 26, w, 16, C.Deep, C.Ink, nil, 8)
+    local bar = new("Frame", track, {Name = "Fill", BackgroundColor3 = C.White, BorderSizePixel = 0,
+        Size = UDim2.new(math.clamp(fill, 0.06, 1), 0, 1, 0)})
+    corner(bar, 8)
+    vgrad(bar, color:Lerp(C.White, 0.35), color)
+end
+
+local function makeJetpacks()
+    section("JETPACKS", 1)
+    local coins = JetpackConfig.Coins(player)
+    local equipped = JetpackConfig.Equipped(player)
+    local intro = panel(pages, "Intro", 0, 0, bodyWidth, 76, Color3.fromRGB(34, 46, 126), C.Deep, C.Cyan, 14)
+    intro.LayoutOrder = 2
+    icon("Coins", intro, 12, 10, 56)
+    local coinText = label(intro, "Coins", formatNumber(coins), 76, 0, 150, 76, 34, C.Gold)
+    coinText.TextWrapped = false
+    label(intro, "Hint", "Better jetpacks fly higher. Stand on your launch pad and press LAUNCH!",
+        236, 6, bodyWidth - 250, 64, narrow and 18 or 21, C.Muted)
+
+    local maxSpeed, maxAir = JetpackConfig.Max("Speed"), JetpackConfig.Max("AirSpeed")
+    local fastestCooldown = math.huge
+    for _, tier in ipairs(JetpackConfig.Tiers) do fastestCooldown = math.min(fastestCooldown, tier.Cooldown) end
+    local rowH = narrow and 172 or 156
+    local btnW = narrow and 150 or 176
+    for i, tier in ipairs(JetpackConfig.Tiers) do
+        local col = RarityColor[tier.Rarity] or C.Cyan
+        local owns = JetpackConfig.Owns(tier, player)
+        local isEquipped = tier == equipped
+        local f = panel(pages, tier.Id, 0, 0, bodyWidth, rowH, Color3.fromRGB(34, 46, 126), C.Deep,
+            isEquipped and C.Green or col, 14)
+        f.LayoutOrder = i + 2
+        local art = rowH - 16
+        aura(f, 8 + art / 2, rowH / 2, art * 0.95, tier.Colors.Glow, 0.78)
+        local vp, ctl = Models.View(f, JetpackModels.Build(tier.Id, {Flames = true}), {
+            Position = UDim2.fromOffset(8, 8), Size = UDim2.fromOffset(art, art), Yaw = -0.5, Margin = 1.15})
+        local hit = hitbox(f)
+        hit.Size = UDim2.new(0, art + 16, 1, 0)
+        attachSpin(hit, vp, ctl)
+
+        local tx = art + 22
+        local textW = bodyWidth - tx - btnW - 22
+        local nameLabel = label(f, "Name", tier.Name, tx, 8, textW, 38, narrow and 26 or 30, C.White)
+        nameLabel.TextWrapped = false
+        nameLabel.TextScaled = true
+        new("UITextSizeConstraint", nameLabel, {MaxTextSize = narrow and 26 or 30})
+        label(f, "Reach", tier.Rarity .. " - reaches " .. JetpackConfig.PlanetLabel(tier), tx, 44, textW, 28,
+            narrow and 17 or 20, col)
+        local statW = math.floor((textW - 20) / 3)
+        local sy = narrow and 86 or 80
+        statBar(f, "Climb", "Climb " .. tier.Speed, tx, sy, statW, tier.Speed / maxSpeed, C.Gold)
+        statBar(f, "Steer", "Steer " .. tier.AirSpeed, tx + statW + 10, sy, statW, tier.AirSpeed / maxAir, C.Cyan)
+        statBar(f, "Recharge", "Recharge " .. tier.Cooldown .. "s", tx + 2 * (statW + 10), sy, statW,
+            fastestCooldown / tier.Cooldown, C.Green)
+
+        local bx, by, bh = bodyWidth - btnW - 14, (rowH - 66) / 2, 66
+        if isEquipped then
+            button(f, "Equipped", "Equipped", bx, by, btnW, bh, C.Green, nil, {rim = C.White, textSize = 26})
+        elseif owns then
+            button(f, "Equip", "Equip", bx, by, btnW, bh, C.Purple,
+                function() jetpackRequest("EquipJetpack", tier) end, {rim = C.Cyan, textSize = 28})
+        else
+            local canAfford = coins >= tier.Price
+            local _, face, lbl = button(f, "Buy", formatNumber(tier.Price), bx, by, btnW, bh,
+                canAfford and C.GoldDeep or Color3.fromRGB(70, 80, 120),
+                function() jetpackRequest("BuyJetpack", tier) end, {rim = C.Gold, textSize = 28})
+            icon("Coins", face, 8, 8, 44)
+            lbl.Position = UDim2.fromOffset(50, 0)
+            lbl.Size = UDim2.new(1, -56, 1, 0)
+        end
+    end
+end
+
 ----------------------------------------------------------------------------
 -- HATCH REVEAL: egg shakes, flashes, then the pet bursts out with light rays.
 -- Trigger from your server: remote:FireClient(player, "Hatched", petId)
@@ -1305,6 +1435,7 @@ render = function()
         elseif currentTab == "Speed" then makePacks(Config.SpeedPacks, "Speed", C.Cyan)
         else makePacks(Config.CreditPacks, "Credits", C.Gold) end
     elseif currentPage == "Index" then makeIndex()
+    elseif currentPage == "Jetpacks" then makeJetpacks()
     else makeInventory(currentPage) end
     refreshPrices()
     if updateTimers then updateTimers() end
@@ -1328,6 +1459,7 @@ resize = function()
     rightScale.Scale = m.hs
     statScale.Scale = m.hs
     moonScale.Scale = m.hs
+    launchScale.Scale = m.hs
     notice.Size = UDim2.fromOffset(math.min(580, m.LW - 28), 60)
     noticeText.TextSize = m.LW < 700 and 18 or 22
     updateHints()
@@ -1567,8 +1699,87 @@ end
 slideIn(left, UDim2.new(0, -260, 0.47, 0), 0.1)
 slideIn(right, UDim2.new(1, 200, 0.47, 0), 0.2)
 slideIn(stats, UDim2.new(0, 14, 1, 240), 0.3)
+slideIn(launchBar, UDim2.new(0.5, 0, 1, 240), 0.4)
 
 if Config.OpenShopOnJoin then openPage("Shop", "Featured") end
+
+----------------------------------------------------------------------------
+-- JETPACKS: LAUNCH + Base buttons, launch keys, and keeping the Jetpacks page up to date
+----------------------------------------------------------------------------
+local launchMessages = {
+    nopad = "Stand on your launch pad to launch! Press the rocket button to go there.",
+    ceiling = "You're as high as this jetpack can go. Buy a better one to reach the next planet!",
+    nocharacter = "You can't launch right now.",
+}
+launchJetpack = function()
+    local ok, reason = Flight.Launch()
+    if ok then playSound("Open") return end
+    if launchMessages[reason] then toast(launchMessages[reason]) end
+end
+
+local teleportBusy = false
+teleportToBase = function()
+    if teleportBusy then return end
+    local remote = jetpackFolder:FindFirstChild("TeleportToLaunchSite")
+    if not remote then toast("Jetpacks are still loading, try again in a moment.") return end
+    teleportBusy = true
+    Flight.Cancel()
+    local ok, success, message = pcall(remote.InvokeServer, remote)
+    teleportBusy = false
+    if not ok then toast("Something went wrong, try again.")
+    elseif not success and message then toast(message) end
+end
+
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed or UserInputService:GetFocusedTextBox() then return end
+    local code = input.KeyCode
+    if code == JetpackConfig.LaunchKey or code == JetpackConfig.LaunchGamepadButton then
+        launchJetpack()
+    elseif code == JetpackConfig.TeleportKey or code == JetpackConfig.TeleportGamepadButton then
+        teleportToBase()
+    end
+end)
+
+-- The LAUNCH button shows the cooldown and "FLYING", and glows while you're on a launch pad.
+task.spawn(function()
+    while gui.Parent do
+        local state, cooldown = Flight.Status()
+        local text
+        if state == "Thrust" then text = "FLYING"
+        elseif cooldown > 0 then text = string.format("%.1fs", cooldown)
+        else text = "LAUNCH" end
+        if launchLabel.Text ~= text then launchLabel.Text = text end
+        launchGlow.Visible = state ~= "Thrust" and cooldown <= 0 and Flight.OnLaunchPad()
+        task.wait(0.1)
+    end
+end)
+
+-- Rebuild the Jetpacks page when coins, the equipped jetpack or the owned jetpacks change.
+local jetpackRefreshQueued = false
+local function refreshJetpacks()
+    if jetpackRefreshQueued then return end
+    jetpackRefreshQueued = true
+    task.delay(0.2, function()
+        jetpackRefreshQueued = false
+        if windowOpen and currentPage == "Jetpacks" then
+            local scroll = pages.CanvasPosition
+            render()
+            pages.CanvasPosition = scroll
+        end
+    end)
+end
+player:GetAttributeChangedSignal(JetpackConfig.CurrencyAttribute):Connect(refreshJetpacks)
+player:GetAttributeChangedSignal(JetpackConfig.EquippedAttribute):Connect(refreshJetpacks)
+local function watchOwned(folder)
+    folder.ChildAdded:Connect(refreshJetpacks)
+    folder.ChildRemoved:Connect(refreshJetpacks)
+    refreshJetpacks()
+end
+local owned = player:FindFirstChild(JetpackConfig.OwnedFolder)
+if owned then watchOwned(owned) end
+player.ChildAdded:Connect(function(child)
+    if child.Name == JetpackConfig.OwnedFolder then watchOwned(child) end
+end)
 
 
 ----------------------------------------------------------------------------
