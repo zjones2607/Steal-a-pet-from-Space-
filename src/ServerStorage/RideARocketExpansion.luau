@@ -1,8 +1,10 @@
--- RideARocketExpansion: one-time edits to the base built by RideARocketBaseBuilder.
+-- RideARocketExpansion: edits to the base built by RideARocketBaseBuilder.
 -- Grows the spawn plaza, pushes the perimeter wall out, and adds a farm behind every station.
--- Run once from Studio's command bar (edit mode, not Play):
+-- Run from Studio's command bar (edit mode, not Play):
 --   require(game.ServerStorage.RideARocketExpansion).Apply()
-local VERSION = 1
+-- Every step is safe to repeat, so running a newer version over an older one updates it in place
+-- (v2 rebuilds the farms 15% bigger and moves the wall to fit them).
+local VERSION = 2
 local function rgb(r,g,b) return Color3.fromRGB(r,g,b) end
 local SP, NEON, GROUND = Enum.Material.SmoothPlastic, Enum.Material.Neon, Enum.Material.Ground
 local C = {
@@ -16,9 +18,12 @@ local R_PLOT = 272
 local PLOT_R = 81.6
 -- New layout
 local HUB_R = 80             -- spawn plaza radius (was 50)
-local WALL_APOTHEM = 410     -- target wall distance from centre (was ~385.5); lowered if the ground runs out
-local FARM_W = 96            -- farm width along the wall
+local FARM_W = 110          -- farm width along the wall
+local FARM_DEPTH = 51        -- farm depth from station to wall
 local FARM_GAP = 4           -- space between a station's outer edge and its farm
+local WALL_GAP = 8           -- space between a farm and the wall
+local WALL_APOTHEM = R_PLOT + PLOT_R + FARM_GAP + FARM_DEPTH + WALL_GAP -- ~417 (was ~385.5); lowered if the ground runs out
+local GROUND_EDGE = 429      -- radius where the planet's top ends
 local ROW_SPACING, CROP_SPACING = 5.5, 8
 
 local M = {}
@@ -101,12 +106,20 @@ local function pushWall(station, apothem)
 			p.Size = Vector3.new(p.Size.X*k, p.Size.Y, p.Size.Z)
 		end
 	end
-	-- Outside rocks keep the same band just beyond the wall
+	-- Outside rocks: squeeze their band into the strip between the wall and the planet's edge
+	local rocks, minR, maxR = {}, math.huge, 0
 	for _, rock in ipairs(station.OutsideRocks:GetChildren()) do
-		if not rock:IsA("BasePart") then continue end
+		if rock:IsA("BasePart") then
+			local r = flat(rock.CFrame.Position).Magnitude
+			table.insert(rocks, rock); minR = math.min(minR, r); maxR = math.max(maxR, r)
+		end
+	end
+	local lo = apothem + 5
+	local hi = math.max(lo, math.min(apothem + 17, GROUND_EDGE))
+	for _, rock in ipairs(rocks) do
 		local pos = flat(rock.CFrame.Position)
-		local r = pos.Magnitude
-		rock.CFrame = rock.CFrame + pos.Unit * (apothem + 6 + (r - oldApothem - 15) * 0.55 - r)
+		local t = maxR > minR and (pos.Magnitude - minR) / (maxR - minR) or 0.5
+		rock.CFrame = rock.CFrame + pos.Unit * (lo + t*(hi - lo) - pos.Magnitude)
 	end
 end
 
@@ -181,7 +194,7 @@ end
 function M.Apply(opts)
 	opts = opts or {}
 	local station = workspace.JetpackPetRescueMap.SpaceStation
-	if station:GetAttribute("ExpansionVersion") == VERSION and not opts.force then
+	if (station:GetAttribute("ExpansionVersion") or 0) >= VERSION and not opts.force then
 		warn("RideARocketExpansion: already applied to this place"); return
 	end
 	local hubR = opts.hubRadius or HUB_R
@@ -200,11 +213,13 @@ function M.Apply(opts)
 
 	growHub(station, hubR)
 	pushWall(station, apothem)
-	local inner, outer = R_PLOT + PLOT_R + FARM_GAP, apothem - 8
+	local inner, outer = R_PLOT + PLOT_R + FARM_GAP, apothem - WALL_GAP
 	local boxes = {}
 	for i = 1, 8 do
 		local plot = station:FindFirstChild("StationPlot"..i)
 		if plot then
+			local old = plot:FindFirstChild("Farm")
+			if old then old:Destroy() end
 			local _, fcf = buildFarm(plot, i, inner, outer)
 			table.insert(boxes, {cf=fcf, w=FARM_W, d=outer - inner})
 		end
