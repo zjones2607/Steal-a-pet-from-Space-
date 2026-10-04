@@ -1,5 +1,6 @@
 -- StationClaims: gives every player their own station when they join, spawns them on it
--- (also after dying), and shows the owner's name above each station for everyone.
+-- (also after dying), and shows the owner's username above their station for everyone.
+-- Unclaimed stations show no sign.
 -- The owner is stored on the plot as OwnerUserId / OwnerName attributes, and the player gets
 -- a "Station" attribute with the plot's name. Stations free up when their owner leaves.
 local Players = game:GetService("Players")
@@ -22,7 +23,7 @@ local function makeSign(plot)
 	anchor.Name = "OwnerSign"; anchor.Size = Vector3.new(1, 1, 1); anchor.CFrame = CFrame.new(top)
 	anchor.Anchored = true; anchor.Transparency = 1; anchor.CanCollide = false; anchor.CanTouch = false; anchor.CanQuery = false
 	local gui = Instance.new("BillboardGui")
-	gui.Name = "OwnerBillboard"; gui.Size = UDim2.fromScale(48, 12); gui.MaxDistance = 900
+	gui.Name = "OwnerBillboard"; gui.Size = UDim2.fromScale(48, 8); gui.MaxDistance = 900
 	gui.AlwaysOnTop = true; gui.LightInfluence = 0; gui.Parent = anchor
 	local function label(name, text, y, h, color)
 		local t = Instance.new("TextLabel")
@@ -32,8 +33,7 @@ local function makeSign(plot)
 		t.Parent = gui
 		return t
 	end
-	label("OwnerName", "", 0, 0.62, Color3.new(1, 1, 1))
-	label("Subtitle", plot:GetAttribute("StationName") or plot.Name, 0.62, 0.38, Color3.fromRGB(160, 215, 255))
+	label("OwnerName", "", 0, 1, Color3.new(1, 1, 1))
 	anchor.Parent = plot
 	return anchor
 end
@@ -42,9 +42,9 @@ local function updateSign(plot)
 	local sign = plot:FindFirstChild("OwnerSign") or makeSign(plot)
 	local owner = claims[plot]
 	local gui = sign.OwnerBillboard
-	gui.OwnerName.Text = owner and owner.DisplayName or "Open Station"
-	gui.OwnerName.TextTransparency = owner and 0 or 0.35
-	-- Subtitle and colours are left alone after creation: StationOwnerLabels restyles them per player
+	gui.OwnerName.Text = owner and owner.Name or ""
+	gui.Enabled = owner ~= nil
+	-- The colour is left alone after creation: StationOwnerLabels restyles it per player
 end
 
 -- Standing on the pad in front of the airlock, facing the station
@@ -63,7 +63,7 @@ local function claim(player)
 		if plot and not claims[plot] then
 			claims[plot] = player
 			plot:SetAttribute("OwnerUserId", player.UserId)
-			plot:SetAttribute("OwnerName", player.DisplayName)
+			plot:SetAttribute("OwnerName", player.Name)
 			player:SetAttribute("Station", plot.Name)
 			updateSign(plot)
 			return plot
