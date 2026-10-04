@@ -34,3 +34,14 @@ Changes to files in `src/` now show up in Studio straight away.
 ## Adding a new script
 
 Create the file in the right `src/` folder, then add an entry for it in `default.project.json`, next to the other scripts in the same place.
+
+## Claude Code skills
+
+`.claude/skills/` has project instructions that Claude Code loads automatically when they're relevant:
+
+| Skill | Used when |
+|---|---|
+| `add-script` | Adding, renaming or removing a script (keeps `default.project.json` in sync; run `python3 .claude/skills/add-script/scripts/check_project.py` to check) |
+| `saved-data` | Making player progress persist through `PlayerSaving` |
+| `server-remotes` | Wiring buttons, pickups, shop actions or rewards safely on the server |
+| `map-builders` | Changing the world through the `ServerStorage` builder modules |
