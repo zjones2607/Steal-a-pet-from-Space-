@@ -5,10 +5,13 @@
 --   Eggs: the eggs found on the planets (EggInventory, filled by PlanetEggCollection). Hatching one
 --     picks a pet with the odds in SpaceGUIConfig.Pets, so the odds the shop shows are the real ones.
 --   Pets: one entry per kind of pet. Hatching one you already have adds to its Count, and its Power
---     grows with it. Up to MAX_EQUIPPED pets can be equipped: they follow you around
---     (StarterPlayerScripts.PetFollowers) and multiply the coins you pick up by 1 + their Power/100.
+--     grows with it. Up to MAX_EQUIPPED kinds can be equipped. Every copy of an equipped pet roams
+--     the pen behind your station (StarterPlayerScripts.PetPens builds them from PenPets) and earns
+--     its Income from SpaceGUIConfig.Pets in coins every second. Equipped pets also still multiply
+--     the coins you pick up by 1 + their Power/100.
 --   Boosts: a hatch sometimes drops one. Using it starts a timer, saved as a unix time in
---     <Boost>EndsAt, so it keeps running while the player is offline.
+--     <Boost>EndsAt, so it keeps running while the player is offline. x2 Coins doubles both pet
+--     income and picked-up coins, and so does the x2 Credits pass.
 --   Robux: the products and passes are the ones in SpaceGUIConfig. Fill in their ProductId and turn
 --     on PurchasesEnabled there. Each purchase is noted in PurchaseHistory and saved before Roblox is
 --     told it was delivered, so nobody pays without getting it, or gets it twice.
@@ -77,22 +80,39 @@ local function petInfo(id)
 	end
 end
 local function powerOf(id) return PET_POWER[id] or DEFAULT_POWER end
+-- Coins per second that one copy of a pet earns in the pen. A pet that isn't in SpaceGUIConfig earns nothing.
+local function incomeOf(id)
+	local info = petInfo(id)
+	return info and type(info.Income) == "number" and info.Income or 0
+end
 local function boostActive(player, key)
 	local endsAt = player:GetAttribute(BOOSTS[key].Attribute)
 	return type(endsAt) == "number" and endsAt > os.time()
 end
+local function setAttribute(player, name, value)
+	if player:GetAttribute(name) ~= value then player:SetAttribute(name, value) end
+end
+-- "1 coin/s", "24 coins/s"
+local function perSecond(coins) return ("%s coin%s/s"):format(tostring(coins), coins == 1 and "" or "s") end
 
 -- Works out everything that depends on equipped pets, boosts and passes:
---   EquippedPets  ids of the equipped pets, comma separated (PetFollowers shows them)
---   PetPower      their total Power
---   CoinMultiplier  what CoinPickups multiplies each coin by
+--   EquippedPets      ids of the equipped pets, comma separated
+--   PenPets           the same pets with how many copies of each, as "id:count" pairs sorted by id
+--                     (like "astro_dog:3,comet_fox:1"). PetPens puts that many of each in the pen.
+--   PetPower          their total Power
+--   CoinMultiplier    what CoinPickups multiplies each coin by
+--   IncomeMultiplier  what pet income is multiplied by: x2 for the x2 Coins boost, x2 for the x2 Credits pass
+--   PetIncome         coins per second the pen earns, which the loop at the bottom pays out
 local function refresh(player)
 	if not ready[player] then return end
-	local ids, power = {}, 0
+	local ids, counts, power, income = {}, {}, 0, 0
 	for _, entry in ipairs(dataFolder(player, "Pets"):GetChildren()) do
 		if entry:IsA("StringValue") and entry:GetAttribute("Equipped") then
-			table.insert(ids, entry.Value)
+			local id, count = entry.Value, entry:GetAttribute("Count") or 1
+			if not counts[id] then table.insert(ids, id) end
+			counts[id] = (counts[id] or 0) + count
 			power += entry:GetAttribute("Power") or 0
+			income += count * incomeOf(id)
 		end
 	end
 	table.sort(ids)
@@ -103,14 +123,25 @@ local function refresh(player)
 			notice(player, BOOSTS[key].Name:gsub(" %(.*%)", "") .. " has run out.")
 		end
 	end
-	local multiplier = 1 + power / 100
-	if boostActive(player, "CoinBoost") then multiplier *= 2 end
-	if player:GetAttribute("Pass_Credits2x") then multiplier *= 2 end
-	multiplier = math.floor(multiplier * 100 + 0.5) / 100
-	local list = table.concat(ids, ",")
-	if player:GetAttribute("EquippedPets") ~= list then player:SetAttribute("EquippedPets", list) end
-	if player:GetAttribute("PetPower") ~= power then player:SetAttribute("PetPower", power) end
-	if player:GetAttribute("CoinMultiplier") ~= multiplier then player:SetAttribute("CoinMultiplier", multiplier) end
+	local boost = 1
+	if boostActive(player, "CoinBoost") then boost *= 2 end
+	if player:GetAttribute("Pass_Credits2x") then boost *= 2 end
+	local multiplier = math.floor((1 + power / 100) * boost * 100 + 0.5) / 100
+	income = math.floor(income * boost + 0.5) -- whole coins (it already is while every Income is whole)
+	local pen = {}
+	for i, id in ipairs(ids) do pen[i] = id .. ":" .. tostring(counts[id]) end
+	setAttribute(player, "EquippedPets", table.concat(ids, ","))
+	setAttribute(player, "PenPets", table.concat(pen, ","))
+	setAttribute(player, "PetPower", power)
+	setAttribute(player, "CoinMultiplier", multiplier)
+	setAttribute(player, "IncomeMultiplier", boost)
+	setAttribute(player, "PetIncome", income)
+end
+
+-- Coins per second one kind of pet earns in the pen right now: all its copies, boosts included
+local function entryIncome(player, entry)
+	local count = entry:GetAttribute("Count") or 1
+	return math.floor(count * incomeOf(entry.Value) * (player:GetAttribute("IncomeMultiplier") or 1) + 0.5)
 end
 
 local function equippedCount(player)
@@ -252,7 +283,17 @@ function actions.HatchEgg(player, kind)
 	if count.Value <= 0 then count:Destroy() end
 	local owned = addPet(player, pet)
 	remote:FireClient(player, "Hatched", pet.Id)
-	local message = owned > 1 and ("Another %s! It now has %d Power."):format(pet.Name, powerOf(pet.Id) * owned) or nil
+	local entry = dataFolder(player, "Pets"):FindFirstChild(pet.Id)
+	local message
+	if entry and entry:GetAttribute("Equipped") then -- it's in the pen: say what it earns there
+		local earns = perSecond(entryIncome(player, entry))
+		message = owned > 1 and ("Another %s! Your %d make %s."):format(pet.Name, owned, earns)
+			or ("%s moved into your pen! +%s"):format(pet.Name, earns)
+	elseif owned > 1 then
+		message = ("Another %s! It now has %d Power."):format(pet.Name, powerOf(pet.Id) * owned)
+	else
+		message = ("Equip %s on the Pets page to put it in your pen."):format(pet.Name)
+	end
 	if rng:NextNumber() < BOOST_DROP_CHANCE then
 		local key = BOOST_KEYS[rng:NextInteger(1, #BOOST_KEYS)]
 		addBoost(player, key)
@@ -268,25 +309,33 @@ function actions.TogglePet(player, id)
 	if entry:GetAttribute("Equipped") then
 		entry:SetAttribute("Equipped", false)
 		refresh(player)
-		return notice(player, ("Unequipped %s."):format(name))
+		return notice(player, ("Unequipped %s. Your pen now makes %s."):format(name,
+			perSecond(player:GetAttribute("PetIncome") or 0)))
 	end
 	if equippedCount(player) >= MAX_EQUIPPED then
 		return notice(player, ("You can equip %d pets. Unequip one first."):format(MAX_EQUIPPED))
 	end
 	entry:SetAttribute("Equipped", true)
 	refresh(player)
-	notice(player, ("Equipped %s! Coins x%s"):format(name, tostring(player:GetAttribute("CoinMultiplier"))))
+	notice(player, ("Equipped %s! +%s, coin pickups x%s"):format(name, perSecond(entryIncome(player, entry)),
+		tostring(player:GetAttribute("CoinMultiplier"))))
 end
 
+-- "Best" means the most coins per second in the pen, then the most Power
 function actions.EquipBest(player)
 	local entries = {}
 	for _, entry in ipairs(dataFolder(player, "Pets"):GetChildren()) do
 		if entry:IsA("StringValue") then table.insert(entries, entry) end
 	end
-	table.sort(entries, function(a, b) return (a:GetAttribute("Power") or 0) > (b:GetAttribute("Power") or 0) end)
+	table.sort(entries, function(a, b)
+		local incomeA, incomeB = entryIncome(player, a), entryIncome(player, b)
+		if incomeA ~= incomeB then return incomeA > incomeB end
+		return (a:GetAttribute("Power") or 0) > (b:GetAttribute("Power") or 0)
+	end)
 	for i, entry in ipairs(entries) do entry:SetAttribute("Equipped", i <= MAX_EQUIPPED) end
 	refresh(player)
-	notice(player, ("Equipped your best pets! Coins x%s"):format(tostring(player:GetAttribute("CoinMultiplier"))))
+	notice(player, ("Equipped your best pets! +%s, coin pickups x%s"):format(perSecond(player:GetAttribute("PetIncome") or 0),
+		tostring(player:GetAttribute("CoinMultiplier"))))
 end
 
 function actions.UseBoost(player, key)
@@ -439,10 +488,17 @@ Players.PlayerRemoving:Connect(function(player)
 	lastHatch[player] = nil
 end)
 
--- Boosts run out on their own
+-- Every second: boosts run out on their own, then the pets in each pen pay their owner. refresh runs
+-- first so a boost that just ran out stops doubling the pay straight away.
 task.spawn(function()
 	while true do
 		task.wait(1)
-		for player in pairs(ready) do refresh(player) end
+		for player in pairs(ready) do
+			refresh(player)
+			local income = player:GetAttribute("PetIncome")
+			if type(income) == "number" and income > 0 then
+				player:SetAttribute("Coins", (player:GetAttribute("Coins") or 0) + income)
+			end
+		end
 	end
 end)

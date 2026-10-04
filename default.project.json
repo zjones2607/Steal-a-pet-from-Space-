@@ -122,6 +122,9 @@
         "PetFollowers": {
           "$path": "src/StarterPlayer/StarterPlayerScripts/PetFollowers.client.luau"
         },
+        "PetPens": {
+          "$path": "src/StarterPlayer/StarterPlayerScripts/PetPens.client.luau"
+        },
         "PlanetEggFeedback": {
           "$path": "src/StarterPlayer/StarterPlayerScripts/PlanetEggFeedback.client.luau"
         },

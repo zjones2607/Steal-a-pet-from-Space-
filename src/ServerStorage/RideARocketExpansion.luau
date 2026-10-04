@@ -1,30 +1,37 @@
 -- RideARocketExpansion: edits to the base built by RideARocketBaseBuilder.
--- Grows the spawn plaza, pushes the perimeter wall out, and adds a farm behind every station.
+-- Grows the spawn plaza, pushes the perimeter wall out, and adds a fenced pet pen behind every station:
+-- a Model "PetPen" in each StationPlot with a grass "Floor" part (its CFrame is the pen's frame, its top
+-- is the ground the pets walk on) and an opening in the fence facing the station. The station owner's
+-- equipped pets roam inside it (StarterPlayerScripts.PetPens builds them on every device).
 -- Run from Studio's command bar (edit mode, not Play):
 --   require(game.ServerStorage.RideARocketExpansion).Apply()
 -- Every step is safe to repeat, so running a newer version over an older one updates it in place
--- (v2 rebuilt the farms 15% bigger; v3 rebuilds them without the FARM gate sign).
-local VERSION = 3
+-- (v2 rebuilt the farms 15% bigger; v3 rebuilt them without the FARM gate sign; v4 turns the farms into
+-- pet pens: the crops are gone and the soil is a grass floor).
+-- Decorations from RideARocketMapDetailer that stand inside a pen are moved (not deleted) to
+-- ServerStorage.RemovedMapBackups.Decor_InPetPens. If you re-run the detailer, run
+-- Apply({force = true}) afterwards to clear its new ones out of the pens.
+local VERSION = 4
 local function rgb(r,g,b) return Color3.fromRGB(r,g,b) end
-local SP, NEON, GROUND = Enum.Material.SmoothPlastic, Enum.Material.Neon, Enum.Material.Ground
+local SP, NEON, GRASS = Enum.Material.SmoothPlastic, Enum.Material.Neon, Enum.Material.Grass
 local C = {
- white=rgb(240,243,248), light=rgb(200,206,216), navy=rgb(28,38,74), blue=rgb(70,160,255),
- soil=rgb(112,80,58), furrow=rgb(86,60,44), stem=rgb(80,200,95), leaf=rgb(60,175,85),
+ white=rgb(240,243,248), light=rgb(200,206,216), blue=rgb(70,160,255),
+ pen=rgb(128,196,94), -- a little lighter than the detailer's Earth grass (88,160,72), so the pens stand out
 }
-local BERRY = {rgb(255,120,220), rgb(110,230,255), rgb(255,230,110)}
 -- Layout of the existing base (matches RideARocketBaseBuilder)
 local Y0 = 8
 local R_PLOT = 272
 local PLOT_R = 81.6
 -- New layout
 local HUB_R = 80             -- spawn plaza radius (was 50)
-local FARM_W = 110          -- farm width along the wall
-local FARM_DEPTH = 51        -- farm depth from station to wall
-local FARM_GAP = 4           -- space between a station's outer edge and its farm
-local WALL_GAP = 8           -- space between a farm and the wall
-local WALL_APOTHEM = R_PLOT + PLOT_R + FARM_GAP + FARM_DEPTH + WALL_GAP -- ~417 (was ~385.5); lowered if the ground runs out
+local PEN_W = 110            -- pen width along the wall
+local PEN_DEPTH = 51         -- pen depth from station to wall
+local PEN_GAP = 4            -- space between a station's outer edge and its pen
+local WALL_GAP = 8           -- space between a pen and the wall
+local WALL_APOTHEM = R_PLOT + PLOT_R + PEN_GAP + PEN_DEPTH + WALL_GAP -- ~417 (was ~385.5); lowered if the ground runs out
 local GROUND_EDGE = 429      -- radius where the planet's top ends
-local ROW_SPACING, CROP_SPACING = 5.5, 8
+local GATE = 7               -- half the width of the opening in the fence facing the station
+local BACKUP = "Decor_InPetPens"
 
 local M = {}
 local function block(name, parent, size, cf, color, opts)
@@ -48,6 +55,11 @@ local function shift(inst, offset) for _, p in ipairs(parts(inst)) do p.CFrame =
 local function flat(v) return Vector3.new(v.X, 0, v.Z) end
 local function anchorPos(inst) local ps = parts(inst); return ps[1] and ps[1].CFrame.Position end
 local function plotDir(i) local phi = math.rad((i-1)*45); return Vector3.new(math.sin(phi), 0, math.cos(phi)) end
+-- Is pos (seen from above) inside a pen box, or within margin studs of it?
+local function inBox(pos, box, margin)
+	local l = box.cf:PointToObjectSpace(Vector3.new(pos.X, box.cf.Position.Y, pos.Z))
+	return math.abs(l.X) < box.w/2 + margin and math.abs(l.Z) < box.d/2 + margin
+end
 
 -- Studio only: is there flat ground all the way round at radius r?
 local function groundAt(surface, r)
@@ -123,34 +135,18 @@ local function pushWall(station, apothem)
 	end
 end
 
-local function buildFarm(plot, i, inner, outer)
+local function buildPen(plot, i, inner, outer)
 	local dir = plotDir(i)
 	local depth = outer - inner
 	local center = dir * ((inner + outer)/2) + Vector3.new(0, Y0, 0)
 	local fcf = CFrame.lookAt(center, center + dir) -- -Z points out to the wall, +Z back to the station
-	local farm = model("Farm", plot)
-	farm:SetAttribute("Station", plot:GetAttribute("StationName"))
-	block("Soil", farm, Vector3.new(FARM_W, 0.8, depth), fcf * CFrame.new(0, 0.4, 0), C.soil, {mat=GROUND})
-	local crops = model("Crops", farm)
-	local rows = math.floor((depth - 6) / ROW_SPACING)
-	local perRow = math.floor((FARM_W - 8) / CROP_SPACING) + 1
-	local slot = 0
-	for r = 0, rows - 1 do
-		local z = -((rows - 1) * ROW_SPACING)/2 + r * ROW_SPACING
-		block("Furrow", farm, Vector3.new(FARM_W - 6, 0.5, 2.6), fcf * CFrame.new(0, 1.05, z), C.furrow, {mat=GROUND})
-		for c = 0, perRow - 1 do
-			local x = -((perRow - 1) * CROP_SPACING)/2 + c * CROP_SPACING
-			local base = fcf * CFrame.new(x, 1.3, z)
-			local crop = model("Crop", crops)
-			slot += 1; crop:SetAttribute("CropSlot", slot)
-			block("Stem", crop, Vector3.new(0.35, 2.2, 0.35), base * CFrame.new(0, 1.1, 0), C.stem, {decor=true})
-			block("Leaf", crop, Vector3.new(1.8, 0.15, 0.6), base * CFrame.new(0, 0.9, 0) * CFrame.Angles(0, math.rad(35 + 40*(c % 3)), math.rad(12)), C.leaf, {decor=true})
-			block("Berry", crop, Vector3.new(1.1, 1.1, 1.1), base * CFrame.new(0, 2.5, 0), BERRY[r % #BERRY + 1], {decor=true, mat=NEON, shape=Enum.PartType.Ball})
-		end
-	end
+	local pen = model("PetPen", plot)
+	pen:SetAttribute("Station", plot:GetAttribute("StationName"))
+	local floor = block("Floor", pen, Vector3.new(PEN_W, 0.8, depth), fcf * CFrame.new(0, 0.4, 0), C.pen, {mat=GRASS})
+	pen.PrimaryPart = floor
 	-- Fence on all four sides, with an opening facing the station
-	local fence = model("Fence", farm)
-	local hw, hd, gate = FARM_W/2, depth/2, 7
+	local fence = model("Fence", pen)
+	local hw, hd = PEN_W/2, depth/2
 	local function rail(a, b)
 		local mid, len = (a + b)/2, (b - a).Magnitude
 		local cf = fcf * CFrame.lookAt(mid, b)
@@ -164,22 +160,79 @@ local function buildFarm(plot, i, inner, outer)
 	end
 	local corners = {Vector3.new(-hw, 0, -hd), Vector3.new(hw, 0, -hd), Vector3.new(hw, 0, hd), Vector3.new(-hw, 0, hd)}
 	rail(corners[1], corners[2]); rail(corners[2], corners[3]); rail(corners[4], corners[1])
-	rail(corners[3], Vector3.new(gate, 0, hd)); rail(Vector3.new(-gate, 0, hd), corners[4])
-	return farm, fcf
+	rail(corners[3], Vector3.new(GATE, 0, hd)); rail(Vector3.new(-GATE, 0, hd), corners[4])
+	return pen, fcf
 end
 
--- Remove scattered decor that would sit inside the new plaza or a farm
-local function clearDecor(station, hubR, farmBoxes)
+-- RideARocketMapDetailer gives the fence posts and rails a metal finish and keeps the old material in an
+-- "OriginalMaterial" attribute. A rebuilt pen copies those finishes from the old farm or pen, attribute
+-- and all, so the detailer's Revert() still works on it.
+local function detailerLooks(old, looks)
+	for _, p in ipairs(parts(old)) do
+		if p:GetAttribute("OriginalMaterial") ~= nil then looks[p.Name] = p.Material end
+	end
+end
+local function keepLooks(pen, looks)
+	for _, p in ipairs(parts(pen)) do
+		local material = looks[p.Name]
+		if material and p.Material ~= material then
+			p:SetAttribute("OriginalMaterial", p.Material.Name)
+			p.Material = material
+		end
+	end
+end
+
+-- Remove scattered decor that would sit inside the new plaza or a pen
+local function clearDecor(station, hubR, penBoxes)
 	for _, d in ipairs(station.BaseDecor:GetChildren()) do
 		local pos = anchorPos(d)
 		if not pos then continue end
 		local remove = flat(pos).Magnitude < hubR + 14
-		for _, box in ipairs(farmBoxes) do
-			local l = box.cf:PointToObjectSpace(Vector3.new(pos.X, box.cf.Position.Y, pos.Z))
-			if math.abs(l.X) < box.w/2 + 8 and math.abs(l.Z) < box.d/2 + 8 then remove = true end
+		for _, box in ipairs(penBoxes) do
+			if inBox(pos, box, 8) then remove = true end
 		end
 		if remove then d:Destroy() end
 	end
+end
+
+-- RideARocketMapDetailer's trees, bushes, ponds, rocks and flowers (its "Detail" folders) that stand
+-- inside a pen would poke through the floor, and the pets would walk through them. Move them (not
+-- delete) to ServerStorage.RemovedMapBackups.Decor_InPetPens. Only things on the planet's top count:
+-- the continents and clouds under Earth are hundreds of studs lower.
+local function centre(inst)
+	local ps = parts(inst)
+	if #ps == 0 then return nil end
+	local sum = Vector3.new(0, 0, 0)
+	for _, p in ipairs(ps) do sum = sum + p.CFrame.Position end
+	return sum / #ps
+end
+local function moveDetailOutOfPens(station, penBoxes)
+	local store, moved = nil, 0
+	for _, folder in ipairs(station:GetDescendants()) do
+		if folder:IsA("Folder") and folder.Name == "Detail" then
+			for _, item in ipairs(folder:GetChildren()) do
+				local pos = centre(item)
+				if not pos or pos.Y < Y0 - 4 or pos.Y > Y0 + 60 then continue end
+				for _, box in ipairs(penBoxes) do
+					if inBox(pos, box, 1.5) then
+						if not store then
+							local ServerStorage = game:GetService("ServerStorage")
+							local root = ServerStorage:FindFirstChild("RemovedMapBackups") or Instance.new("Folder")
+							root.Name = "RemovedMapBackups"
+							root.Parent = ServerStorage
+							store = root:FindFirstChild(BACKUP) or Instance.new("Folder")
+							store.Name = BACKUP
+							store.Parent = root
+						end
+						item.Parent = store
+						moved += 1
+						break
+					end
+				end
+			end
+		end
+	end
+	return moved
 end
 
 function M.Apply(opts)
@@ -204,23 +257,29 @@ function M.Apply(opts)
 
 	growHub(station, hubR)
 	pushWall(station, apothem)
-	local inner, outer = R_PLOT + PLOT_R + FARM_GAP, apothem - WALL_GAP
+	local inner, outer = R_PLOT + PLOT_R + PEN_GAP, apothem - WALL_GAP
 	local boxes = {}
 	for i = 1, 8 do
 		local plot = station:FindFirstChild("StationPlot"..i)
 		if plot then
-			local old = plot:FindFirstChild("Farm")
-			if old then old:Destroy() end
-			local _, fcf = buildFarm(plot, i, inner, outer)
-			table.insert(boxes, {cf=fcf, w=FARM_W, d=outer - inner})
+			-- The old farm (v1-v3) or pen (v4) goes; the new pen keeps its fence's detailer finish
+			local looks = {}
+			for _, old in ipairs(plot:GetChildren()) do
+				if old.Name == "Farm" or old.Name == "PetPen" then detailerLooks(old, looks); old:Destroy() end
+			end
+			local pen, fcf = buildPen(plot, i, inner, outer)
+			keepLooks(pen, looks)
+			table.insert(boxes, {cf=fcf, w=PEN_W, d=outer - inner})
 		end
 	end
 	clearDecor(station, hubR, boxes)
+	local moved = moveDetailOutOfPens(station, boxes)
 	station:SetAttribute("ExpansionVersion", VERSION)
 
 	if recording then
 		pcall(function() game:GetService("ChangeHistoryService"):FinishRecording(recording, Enum.FinishRecordingOperation.Commit) end)
 	end
-	print(("RideARocketExpansion: plaza radius %d, wall at %d, %d farms (%d studs deep)"):format(hubR, apothem, #boxes, outer - inner))
+	print(("RideARocketExpansion: plaza radius %d, wall at %d, %d pet pens (%d studs deep), %d decorations moved out of the pens")
+		:format(hubR, apothem, #boxes, outer - inner, moved))
 end
 return M

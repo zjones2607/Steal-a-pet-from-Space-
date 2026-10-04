@@ -67,17 +67,19 @@ Config.CreditPacks = {
     {Key="Credits800K", Name="800K Credits", ProductId=0, Kind="Product", Icon="Coins"},
 }
 
--- These are the DISPLAY odds shown in the GUI, not a server hatch system.
--- Match these values to your server's real odds before selling eggs.
+-- The server (PetsAndShop) hatches eggs with these Odds, so the odds the GUI shows are the real ones.
+-- Income = coins per second that ONE copy of the pet earns while it's equipped. Equipped pets roam
+-- the pen behind your station (StarterPlayerScripts.PetPens), and every copy there earns its Income
+-- (doubled by the x2 Coins boost, and again by the x2 Credits pass). Keep Income a whole number.
 -- Each pet Id must match a model in SpaceModels (unknown ids get a generic blob).
 Config.Pets = {
-    {Id="astro_dog", Name="Astro Dog", Odds=39, Rarity="Common"},
-    {Id="moon_cat", Name="Moon Cat", Odds=24, Rarity="Common"},
-    {Id="alien_bunny", Name="Alien Bunny", Odds=18, Rarity="Uncommon"},
-    {Id="comet_fox", Name="Comet Fox", Odds=11, Rarity="Rare"},
-    {Id="robot_bear", Name="Robot Bear", Odds=6.5, Rarity="Epic"},
-    {Id="star_dragon", Name="Star Dragon", Odds=0.5, Rarity="Legendary"},
-    {Id="cosmic_golem", Name="Cosmic Golem", Odds=1, Rarity="Mythic"},
+    {Id="astro_dog", Name="Astro Dog", Odds=39, Rarity="Common", Income=1},
+    {Id="moon_cat", Name="Moon Cat", Odds=24, Rarity="Common", Income=2},
+    {Id="alien_bunny", Name="Alien Bunny", Odds=18, Rarity="Uncommon", Income=5},
+    {Id="comet_fox", Name="Comet Fox", Odds=11, Rarity="Rare", Income=12},
+    {Id="robot_bear", Name="Robot Bear", Odds=6.5, Rarity="Epic", Income=30},
+    {Id="star_dragon", Name="Star Dragon", Odds=0.5, Rarity="Legendary", Income=200},
+    {Id="cosmic_golem", Name="Cosmic Golem", Odds=1, Rarity="Mythic", Income=75},
 }
 
 return Config

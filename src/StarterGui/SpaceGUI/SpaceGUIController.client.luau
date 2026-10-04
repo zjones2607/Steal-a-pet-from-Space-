@@ -16,6 +16,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
 local GuiService = game:GetService("GuiService")
+local TextService = game:GetService("TextService")
 
 local player = Players.LocalPlayer
 local gui = script.Parent
@@ -1570,7 +1571,7 @@ task.spawn(function()
 end)
 
 ----------------------------------------------------------------------------
--- STATS (numbers pop when they change)
+-- STATS (numbers pop when they change; Credits count up live)
 ----------------------------------------------------------------------------
 local function readStat(names)
     local leaderstats = player:FindFirstChild("leaderstats")

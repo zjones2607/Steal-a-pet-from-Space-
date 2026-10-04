@@ -3,7 +3,7 @@
 -- Put it inside the SpaceGUI ScreenGui next to SpaceGUIController.
 --
 --   Icons.new(name, parent, size) -> Frame (square, size x size pixels)
---   names: Cart Book Star Rocket Coins Egg Helmet Potion Clock Moon Robux Gift Plus Check Jetpack Pad
+--   names: Cart Book Star Rocket Coins Egg Helmet Potion Clock Moon Robux Gift Plus Check Jetpack
 
 local Icons = {}
 local INK = Color3.fromRGB(3, 8, 30)
@@ -119,16 +119,6 @@ builders.Jetpack = function(S)
     end
     S(0.5, 0.36, 0.14, 0.14, rgb(130, 240, 255), rgb(20, 130, 230), {})
     S(0.5, 0.6, 0.2, 0.07, rgb(255, 215, 90), rgb(230, 140, 20), {r = 0.3})
-end
-
--- A glowing launch pad with a gold arrow pointing down onto it (teleport to your pad).
-builders.Pad = function(S)
-    S(0.5, 0.8, 0.88, 0.3, rgb(205, 215, 240), rgb(120, 135, 180), {})
-    S(0.5, 0.77, 0.62, 0.17, rgb(130, 240, 255), rgb(20, 130, 230), {ink = false})
-    S(0.5, 0.76, 0.34, 0.08, rgb(235, 250, 255), nil, {ink = false, t = 0.15})
-    S(0.5, 0.25, 0.17, 0.34, rgb(255, 236, 100), rgb(240, 150, 20), {r = 0.4})
-    S(0.4, 0.45, 0.16, 0.34, rgb(255, 236, 100), rgb(240, 150, 20), {r = 0.45, rot = -45})
-    S(0.6, 0.45, 0.16, 0.34, rgb(255, 236, 100), rgb(240, 150, 20), {r = 0.45, rot = 45})
 end
 
 builders.Clock = function(S)

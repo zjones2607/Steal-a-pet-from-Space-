@@ -28,12 +28,13 @@ local C = {
 	Ink = Color3.fromRGB(3, 8, 30), Navy = Color3.fromRGB(9, 23, 68), Deep = Color3.fromRGB(5, 15, 48),
 	Panel = Color3.fromRGB(17, 36, 96), Cyan = Color3.fromRGB(8, 197, 248), Blue = Color3.fromRGB(28, 122, 235),
 	Gold = Color3.fromRGB(255, 218, 52), GoldDeep = Color3.fromRGB(240, 150, 20), White = Color3.fromRGB(250, 252, 255),
-	Orange = Color3.fromRGB(255, 130, 30),
-	Grey = Color3.fromRGB(95, 104, 135), Green = Color3.fromRGB(72, 232, 120),
+	Orange = Color3.fromRGB(255, 120, 30), OrangeTop = Color3.fromRGB(255, 205, 70),
+	Grey = Color3.fromRGB(95, 104, 135), GreyTop = Color3.fromRGB(160, 170, 195), Green = Color3.fromRGB(72, 232, 120),
 }
 local SHOWN_Y, HIDDEN_Y = -26, 260
 local MENU_ATTRIBUTES = {"SpaceGUIOpen", "AdminPanelOpen"}
 
+-- Default GUI borders are square (UICorner doesn't round them), so every object starts without one
 local function new(class, parent, props)
 	local inst = Instance.new(class)
 	if inst:IsA("GuiObject") then inst.BorderSizePixel = 0 end
@@ -48,6 +49,7 @@ local function tween(obj, seconds, props, style, direction, repeats, reverses)
 	return t
 end
 local function corner(obj, r) return new("UICorner", obj, {CornerRadius = UDim.new(0, r)}) end
+-- Outline around a Frame's (rounded) edge
 local function stroke(obj, color, thickness, transparency)
 	return new("UIStroke", obj, {Color = color, Thickness = thickness, Transparency = transparency or 0,
 		LineJoinMode = Enum.LineJoinMode.Round, ApplyStrokeMode = Enum.ApplyStrokeMode.Border})
@@ -55,45 +57,52 @@ end
 local function gradient(obj, top, bottom)
 	return new("UIGradient", obj, {Color = ColorSequence.new(top, bottom), Rotation = 90})
 end
+-- Outlined cartoon text. The outline goes round the letters (Contextual), not round the label's
+-- box: a Border stroke here drew a square black frame around every label, i.e. around the buttons.
 local function text(parent, value, size, props)
 	local l = new("TextLabel", parent, {Text = value, BackgroundTransparency = 1, Font = Enum.Font.FredokaOne,
 		TextSize = size, TextColor3 = C.White, TextWrapped = false, ZIndex = 5})
 	for k, v in pairs(props or {}) do l[k] = v end
-	stroke(l, C.Ink, math.clamp(size / 11, 1.5, 4))
+	new("UIStroke", l, {Color = C.Ink, Thickness = math.clamp(size / 11, 1.5, 4),
+		LineJoinMode = Enum.LineJoinMode.Round, ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual})
 	return l
 end
 
+-- Key hint sitting on the button's top-right corner, centred on the corner so it sticks out the
+-- same amount above and to the right
 local keyboard = UserInputService.KeyboardEnabled and not GuiService:IsTenFootInterface()
-local KEY = Color3.fromRGB(70, 80, 120)
+local KEY_SIZE, KEY_INSET = 34, 8
 local function keycap(parent, label)
-	local cap = new("Frame", parent, {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 6, 0, -8),
-		Size = UDim2.fromOffset(28, 28), BackgroundColor3 = C.White, ZIndex = 6})
-	corner(cap, 8); gradient(cap, KEY:Lerp(C.White, 0.3), KEY); stroke(cap, C.Ink, 2.5)
-	text(cap, label, 17, {Size = UDim2.fromScale(1, 1), ZIndex = 7})
+	local cap = new("Frame", parent, {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(1, -KEY_INSET, 0, KEY_INSET),
+		Size = UDim2.fromOffset(KEY_SIZE, KEY_SIZE), BackgroundColor3 = C.White, ZIndex = 6})
+	corner(cap, 9); gradient(cap, Color3.fromRGB(235, 240, 255), Color3.fromRGB(170, 185, 220)); stroke(cap, C.Ink, 3)
+	text(cap, label, 20, {Size = UDim2.fromScale(1, 1), TextColor3 = C.Navy, ZIndex = 7})
 	return cap
 end
 
--- Glossy 3D button made the same way as SpaceGUI's: dark lip underneath, gradient face from a
--- lighter top to the colour, cyan rim, gloss, plus a shine sweep
-local RADIUS = 14
-local function cartoonButton(parent, w, h, color, rim)
-	local top, bottom = color:Lerp(C.White, 0.3), color
-	local depth = math.max(4, math.floor(h * 0.1))
+-- Glossy 3D button like SpaceGUI's: dark lip underneath, gradient face, rim, gloss and a shine sweep.
+-- The face and the lip are the same size with the same RADIUS and OUTLINE, and the lip is just
+-- the face moved down, so the dark outline hugs the rounded button and the lip only shows as a
+-- darker edge along the bottom. depth leaves a clear band of lip below the face's outline.
+local RADIUS, OUTLINE = 22, 4
+local LIP_DARKEN = 0.45
+local function cartoonButton(parent, w, h, top, bottom)
+	local depth = math.max(OUTLINE + 6, math.floor(h * 0.11))
 	local holder = new("TextButton", parent, {Text = "", AutoButtonColor = false, BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 0), Size = UDim2.fromOffset(w, h)})
 	local scale = new("UIScale", holder, {Scale = 1})
-	local lip = new("Frame", holder, {BackgroundColor3 = bottom:Lerp(C.Ink, 0.55), Position = UDim2.fromOffset(0, depth),
+	local lip = new("Frame", holder, {BackgroundColor3 = bottom:Lerp(C.Ink, LIP_DARKEN), Position = UDim2.fromOffset(0, depth),
 		Size = UDim2.new(1, 0, 1, -depth)})
-	corner(lip, RADIUS); stroke(lip, C.Ink, 3)
+	corner(lip, RADIUS); stroke(lip, C.Ink, OUTLINE)
 	local face = new("Frame", holder, {BackgroundColor3 = C.White, Size = UDim2.new(1, 0, 1, -depth)})
 	corner(face, RADIUS)
 	local faceGradient = gradient(face, top, bottom)
-	stroke(face, C.Ink, 3)
-	local rimFrame = new("Frame", face, {BackgroundTransparency = 1, Position = UDim2.fromOffset(3, 3), Size = UDim2.new(1, -6, 1, -6)})
-	corner(rimFrame, RADIUS - 3); stroke(rimFrame, rim or C.Cyan, 2, 0.1)
-	local gloss = new("Frame", face, {BackgroundColor3 = C.White, BackgroundTransparency = 0.8,
-		Position = UDim2.fromOffset(6, 4), Size = UDim2.new(1, -12, 0.36, 0), ZIndex = 2})
-	corner(gloss, 8)
+	stroke(face, C.Ink, OUTLINE)
+	local rim = new("Frame", face, {BackgroundTransparency = 1, Position = UDim2.fromOffset(4, 4), Size = UDim2.new(1, -8, 1, -8)})
+	corner(rim, RADIUS - 4); stroke(rim, C.White, 2.5, 0.35)
+	local gloss = new("Frame", face, {BackgroundColor3 = C.White, BackgroundTransparency = 0.72,
+		Position = UDim2.fromOffset(10, 6), Size = UDim2.new(1, -20, 0.36, 0), ZIndex = 2})
+	corner(gloss, 12)
 	local shine = new("Frame", face, {BackgroundColor3 = C.White, Size = UDim2.fromScale(1, 1), ZIndex = 3})
 	corner(shine, RADIUS)
 	local shineGradient = new("UIGradient", shine, {Rotation = 25, Offset = Vector2.new(-1, 0),
@@ -104,7 +113,7 @@ local function cartoonButton(parent, w, h, color, rim)
 	local function release() tween(face, 0.1, {Position = UDim2.fromOffset(0, 0)}, Enum.EasingStyle.Back) end
 	holder.MouseButton1Up:Connect(release)
 	holder.MouseLeave:Connect(release)
-	return {holder = holder, face = face, gradient = faceGradient, scale = scale, shine = shineGradient}
+	return {holder = holder, face = face, lip = lip, gradient = faceGradient, scale = scale, shine = shineGradient}
 end
 
 local gui = new("ScreenGui", playerGui, {Name = "JetpackHUD", ResetOnSpawn = false, DisplayOrder = 30,
@@ -143,7 +152,7 @@ end
 -- LAUNCH: big orange button with a wiggling rocket
 local launchSlot = new("Frame", stage, {BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 1),
 	Position = UDim2.new(0.5, 0, 1, HIDDEN_Y), Size = UDim2.fromOffset(320, 116), Visible = false})
-local launch = cartoonButton(launchSlot, 320, 116, C.Orange, C.Gold)
+local launch = cartoonButton(launchSlot, 320, 116, C.OrangeTop, C.Orange)
 local rocket
 if Icons then
 	rocket = Icons.new("Rocket", launch.face, 78)
@@ -160,14 +169,9 @@ if keyboard then keycap(launch.holder, "F") end
 
 -- MY PAD: smaller blue button, shown while you're off the pad
 local padSlot = new("Frame", stage, {BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 1),
-	Position = UDim2.new(0.5, 0, 1, SHOWN_Y), Size = UDim2.fromOffset(220, 84)})
-local pad = cartoonButton(padSlot, 220, 84, Color3.fromRGB(24, 128, 226), C.Cyan)
-if Icons then
-	local padIcon = Icons.new("Pad", pad.face, 64)
-	padIcon.Position = UDim2.fromOffset(8, 6)
-	padIcon.ZIndex = 4
-end
-text(pad.face, "My Pad", 34, {Position = UDim2.fromOffset(Icons and 72 or 0, 0), Size = UDim2.new(1, Icons and -76 or 0, 1, 0)})
+	Position = UDim2.new(0.5, 0, 1, SHOWN_Y), Size = UDim2.fromOffset(210, 75)})
+local pad = cartoonButton(padSlot, 210, 75, Color3.fromRGB(110, 190, 255), C.Blue)
+text(pad.face, "MY PAD", 30, {Size = UDim2.fromScale(1, 1)})
 if keyboard then keycap(pad.holder, "T") end
 
 -- Animations: a shine sweeps across LAUNCH, the button breathes and the rocket wiggles
@@ -229,6 +233,8 @@ local function menuOpen()
 	return false
 end
 
+-- Whether LAUNCH has its ready (orange) look; set by setLook below
+local ready = nil
 local REASONS = {
 	nopad = "Stand on your launch pad to launch! Press MY PAD to go there.",
 	cooldown = "Your jetpack is recharging...",
@@ -261,13 +267,13 @@ launch.holder.Activated:Connect(doLaunch)
 pad.holder.Activated:Connect(goToPad)
 
 -- Watch the pad and the jetpack's state
-local onPad, ready = false, nil
+local onPad = false
 local showLaunch, showPad = false, true
 local function setLook(isReady, cooldown)
 	if isReady ~= ready then
 		ready = isReady
-		launch.gradient.Color = isReady and ColorSequence.new(C.Orange:Lerp(C.White, 0.3), C.Orange)
-			or ColorSequence.new(C.Grey:Lerp(C.White, 0.3), C.Grey)
+		launch.gradient.Color = isReady and ColorSequence.new(C.OrangeTop, C.Orange) or ColorSequence.new(C.GreyTop, C.Grey)
+		launch.lip.BackgroundColor3 = (isReady and C.Orange or C.Grey):Lerp(C.Ink, LIP_DARKEN)
 		launchText.TextSize = isReady and 50 or 34
 		launchText.Position = UDim2.fromOffset(Icons and 100 or 0, isReady and 0 or -10)
 		launchSub.Visible = not isReady

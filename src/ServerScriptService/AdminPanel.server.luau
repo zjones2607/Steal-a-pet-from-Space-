@@ -1,9 +1,15 @@
 -- AdminPanel: an admin panel that only the game's owner and developers can open.
--- Admins are: the game's owner (or rank GROUP_ADMIN_RANK+ if a group owns the game), anyone in
--- ADMIN_USERNAMES, and any real account while testing in Studio. Only admins are sent the panel,
--- and the server re-checks admin status on every request, so other players can't use it even by
--- firing the remote themselves.
+-- Admins are:
+--   * anyone in ADMIN_USERNAMES (the owner's account is listed, so it works in real servers and in
+--     Roblox's cloud Team Test even though the game belongs to a group),
+--   * the game's owner, or rank GROUP_ADMIN_RANK+ in the group if a group owns the game,
+--   * everyone while playing in Studio. Studio's Test > Clients and Servers makes fake players
+--     ("Player1", "Player2"...) with negative user IDs, and a Studio server only runs on a
+--     developer's own computer, so nobody else can join it.
+-- Only admins are sent the panel, and the server re-checks admin status on every request, so other
+-- players can't use it even by firing the remote themselves.
 local ADMIN_USERNAMES = {
+	"ZJONES262007",       -- the game's owner
 	-- "SomeDeveloper",   -- Roblox usernames of developers, in quotes, one per line
 }
 local GROUP_ADMIN_RANK = 254
@@ -32,7 +38,7 @@ end)
 
 local function checkAdmin(player)
 	if adminIds[player.UserId] or adminNames[player.Name:lower()] then return true end
-	if RunService:IsStudio() and player.UserId > 0 then return true end
+	if RunService:IsStudio() then return true end -- includes Studio's fake test players (negative IDs)
 	if game.CreatorType == Enum.CreatorType.User then return player.UserId == game.CreatorId end
 	local ok, rank = pcall(player.GetRankInGroup, player, game.CreatorId)
 	return ok and rank >= GROUP_ADMIN_RANK
