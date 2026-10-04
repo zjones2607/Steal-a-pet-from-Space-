@@ -16,7 +16,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
 local GuiService = game:GetService("GuiService")
-local TextService = game:GetService("TextService")
 
 local player = Players.LocalPlayer
 local gui = script.Parent
@@ -1598,8 +1597,69 @@ end
 task.spawn(function()
     while gui.Parent do
         setStat(speedLabel, readStat(Config.SpeedStatNames))
-        setStat(creditLabel, readStat(Config.CreditsStatNames))
         task.wait(0.4)
+    end
+end)
+
+-- Credits roll toward the real value over COUNT_TIME instead of jumping, so the coins the pen pays
+-- every second (the server adds PetIncome to Coins) visibly count up. Only a jump bigger than one
+-- second of pet income (a coin pickup, a purchase) makes the number pop; an income tick just bumps
+-- the green "+N/s" badge, which sits under the number while the player's pets are earning.
+local COUNT_TIME = 0.8
+local creditSize = 36 -- the number shrinks a little while the badge is under it
+local incomeLabel = label(creditLabel.Parent, "Income", "", 78, 38, 170, 17, 16, C.Green)
+incomeLabel.TextWrapped = false
+incomeLabel.Visible = false
+local function petIncome()
+    local income = player:GetAttribute("PetIncome")
+    return (type(income) == "number" and income > 0) and income or 0
+end
+local function updateIncome()
+    local income = petIncome()
+    local earning = income > 0
+    if earning then incomeLabel.Text = "+" .. formatNumber(income) .. "/s" end
+    if incomeLabel.Visible == earning then return end
+    incomeLabel.Visible = earning
+    -- The number moves up to make room for the badge, and back to the middle when it goes.
+    -- TextSize gets its own tween so a pop (which also tweens TextSize) can't cancel the move.
+    creditSize = earning and 32 or 36
+    tween(creditLabel, 0.2, {Position = UDim2.fromOffset(76, earning and 3 or 0),
+        Size = UDim2.fromOffset(172, earning and 36 or 60)})
+    tween(creditLabel, 0.2, {TextSize = creditSize})
+end
+player:GetAttributeChangedSignal("PetIncome"):Connect(updateIncome)
+updateIncome()
+
+local creditFrom, creditTo, creditShown, creditStart
+local function setCreditTarget(value)
+    if creditTo == nil then -- first reading: show it straight away
+        creditFrom, creditTo, creditShown, creditStart = value, value, value, os.clock()
+        return
+    end
+    if value == creditTo then return end
+    local change = value - creditTo
+    creditFrom, creditTo, creditStart = creditShown, value, os.clock()
+    if math.abs(change) > petIncome() then
+        creditLabel.TextSize = creditSize + 8
+        tween(creditLabel, 0.3, {TextSize = creditSize}, Enum.EasingStyle.Back)
+    elseif change > 0 and incomeLabel.Visible then
+        incomeLabel.TextSize = 20
+        tween(incomeLabel, 0.3, {TextSize = 16}, Enum.EasingStyle.Back)
+    end
+end
+task.spawn(function()
+    while gui.Parent do
+        setCreditTarget(readStat(Config.CreditsStatNames))
+        local t = (os.clock() - creditStart) / COUNT_TIME
+        if t >= 1 then
+            creditShown = creditTo
+        else
+            creditShown = creditFrom + (creditTo - creditFrom) * (1 - (1 - t) ^ 2)
+        end
+        -- Rounded while rolling, so the last step doesn't hang on the number below the target.
+        local text = formatNumber(t >= 1 and creditTo or math.floor(creditShown + 0.5))
+        if creditLabel.Text ~= text then creditLabel.Text = text end
+        task.wait()
     end
 end)
 

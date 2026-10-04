@@ -276,9 +276,10 @@ local function setIncome(pet, multiplier)
 	pet.amount.Size = UDim2.fromScale(width, 1)
 end
 
--- The outlines are in pixels, so they're thinned out as a label gets smaller with distance
+-- The outlines are in pixels, so they're thinned out as a label gets smaller with distance: about a
+-- tenth of the name's height on screen, like SpaceGUI's text (in quarter pixels, so it rarely changes)
 local function setOutline(pet, pixelsPerStud)
-	local thickness = math.clamp(math.floor(NAME_H * pixelsPerStud * 0.11 * 4 + 0.5) / 4, 1, 3.5)
+	local thickness = math.clamp(math.floor(NAME_H * pixelsPerStud / 10 * 4 + 0.5) / 4, 1, 4)
 	if pet.outline == thickness then return end
 	pet.outline = thickness
 	pet.strokes[1].Thickness = thickness
@@ -338,7 +339,13 @@ end
 ----------------------------------------------------------------------------
 -- PENS
 ----------------------------------------------------------------------------
-local pens = {} -- [plot] = {plot, index, owner, floor, folder, pets = {pet}, byKey = {[key] = pet}}
+-- [plot] = {plot, index, folder, owner, penModel, floor, pets = {pet}, byKey = {[key] = pet}, connections}
+local pens = {}
+
+local function disconnectAll(list)
+	for _, conn in ipairs(list) do conn:Disconnect() end
+	table.clear(list)
+end
 
 local function clearPets(pen)
 	for _, pet in ipairs(pen.pets) do pet.model:Destroy() end
@@ -346,9 +353,8 @@ local function clearPets(pen)
 	table.clear(pen.byKey)
 end
 
-local function currentFloor(plot)
-	local penModel = plot:FindFirstChild("PetPen")
-	local floor = penModel and penModel:FindFirstChild("Floor")
+local function currentFloor(pen)
+	local floor = pen.penModel and pen.penModel:FindFirstChild("Floor")
 	return floor and floor:IsA("BasePart") and floor or nil
 end
 
@@ -365,7 +371,7 @@ end
 -- Makes the pen's pets match its owner's PenPets: copies that are gone are removed, new ones added,
 -- and the ones still there carry on where they are.
 local function sync(pen)
-	local floor = currentFloor(pen.plot)
+	local floor = currentFloor(pen)
 	if floor ~= pen.floor then
 		clearPets(pen)
 		pen.floor = floor
@@ -400,8 +406,7 @@ local function sync(pen)
 end
 
 local function setOwner(pen)
-	for _, conn in ipairs(pen.ownerConns) do conn:Disconnect() end
-	table.clear(pen.ownerConns)
+	disconnectAll(pen.ownerConns)
 	local id = pen.plot:GetAttribute("OwnerUserId")
 	local owner = type(id) == "number" and Players:GetPlayerByUserId(id) or nil
 	if owner ~= pen.owner then clearPets(pen) end
@@ -413,15 +418,20 @@ local function setOwner(pen)
 	sync(pen)
 end
 
--- The PetPen model appears when the owner runs the map command (or streams in): watch it for its Floor
-local function watchPenModel(pen, penModel)
-	if pen.penModel == penModel then return end
-	for _, conn in ipairs(pen.penConns) do conn:Disconnect() end
-	table.clear(pen.penConns)
-	pen.penModel = penModel
-	local function changed(child) if child.Name == "Floor" then sync(pen) end end
-	table.insert(pen.penConns, penModel.ChildAdded:Connect(changed))
-	table.insert(pen.penConns, penModel.ChildRemoved:Connect(changed))
+-- The PetPen model appears when the owner runs the map command (or when it streams in), and running the
+-- command again replaces it: this finds the plot's current one and watches it for its Floor.
+local function findPenModel(pen)
+	local penModel = pen.plot:FindFirstChild("PetPen")
+	if penModel and not penModel:IsA("Model") then penModel = nil end
+	if penModel ~= pen.penModel then
+		disconnectAll(pen.penConns)
+		pen.penModel = penModel
+		if penModel then
+			local function changed(child) if child.Name == "Floor" then sync(pen) end end
+			table.insert(pen.penConns, penModel.ChildAdded:Connect(changed))
+			table.insert(pen.penConns, penModel.ChildRemoved:Connect(changed))
+		end
+	end
 	sync(pen)
 end
 
@@ -431,20 +441,31 @@ local function watchPlot(plot)
 	folder.Name = plot.Name
 	folder.Parent = holder
 	local pen = {plot = plot, index = tonumber(plot.Name:match("%d+")), folder = folder, pets = {}, byKey = {},
-		ownerConns = {}, penConns = {}}
+		plotConns = {}, ownerConns = {}, penConns = {}}
 	pens[plot] = pen
-	plot:GetAttributeChangedSignal("OwnerUserId"):Connect(function() setOwner(pen) end)
-	plot.ChildAdded:Connect(function(child)
-		if child.Name == "PetPen" and child:IsA("Model") then watchPenModel(pen, child) end
-	end)
-	plot.ChildRemoved:Connect(function(child) if child == pen.penModel then sync(pen) end end)
-	local penModel = plot:FindFirstChild("PetPen")
-	if penModel then watchPenModel(pen, penModel) end
+	local function penChanged(child) if child.Name == "PetPen" then findPenModel(pen) end end
+	table.insert(pen.plotConns, plot:GetAttributeChangedSignal("OwnerUserId"):Connect(function() setOwner(pen) end))
+	table.insert(pen.plotConns, plot.ChildAdded:Connect(penChanged))
+	table.insert(pen.plotConns, plot.ChildRemoved:Connect(penChanged))
+	findPenModel(pen)
 	setOwner(pen)
+end
+
+-- A plot that's removed (or streamed out) takes its pets with it; if it comes back, it's watched afresh
+local function forgetPlot(plot)
+	local pen = pens[plot]
+	if not pen then return end
+	disconnectAll(pen.plotConns)
+	disconnectAll(pen.ownerConns)
+	disconnectAll(pen.penConns)
+	clearPets(pen)
+	pen.folder:Destroy()
+	pens[plot] = nil
 end
 
 for _, plot in ipairs(station:GetChildren()) do watchPlot(plot) end
 station.ChildAdded:Connect(watchPlot)
+station.ChildRemoved:Connect(forgetPlot)
 
 Players.PlayerAdded:Connect(function(newPlayer)
 	for _, pen in pairs(pens) do
@@ -454,8 +475,7 @@ end)
 Players.PlayerRemoving:Connect(function(leaving)
 	for _, pen in pairs(pens) do
 		if pen.owner == leaving then
-			for _, conn in ipairs(pen.ownerConns) do conn:Disconnect() end
-			table.clear(pen.ownerConns)
+			disconnectAll(pen.ownerConns)
 			pen.owner = nil
 			clearPets(pen)
 		end
