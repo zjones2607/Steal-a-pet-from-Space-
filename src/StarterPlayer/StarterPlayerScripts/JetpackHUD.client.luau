@@ -4,7 +4,9 @@
 --   LAUNCH  slides up from the bottom of the screen while you stand on a launch pad and drops
 --           away when you step off. Flies with the equipped jetpack (JetpackFlight). Key: F / X
 --   MY PAD  shows while you're off the pad and teleports you to your station's launch pad
---           (TeleportToLaunchSite). Key: T / L2
+--           (TeleportToLaunchSite). Key: T / L2, which works even while the buttons are hidden.
+-- Both buttons slide away while a menu is open: SpaceGUI and the admin panel set the local
+-- player attributes listed in MENU_ATTRIBUTES while their windows are showing.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -26,13 +28,15 @@ local C = {
 	Ink = Color3.fromRGB(3, 8, 30), Navy = Color3.fromRGB(9, 23, 68), Deep = Color3.fromRGB(5, 15, 48),
 	Panel = Color3.fromRGB(17, 36, 96), Cyan = Color3.fromRGB(8, 197, 248), Blue = Color3.fromRGB(28, 122, 235),
 	Gold = Color3.fromRGB(255, 218, 52), GoldDeep = Color3.fromRGB(240, 150, 20), White = Color3.fromRGB(250, 252, 255),
-	Orange = Color3.fromRGB(255, 120, 30), OrangeTop = Color3.fromRGB(255, 205, 70),
-	Grey = Color3.fromRGB(95, 104, 135), GreyTop = Color3.fromRGB(160, 170, 195), Green = Color3.fromRGB(72, 232, 120),
+	Orange = Color3.fromRGB(255, 130, 30),
+	Grey = Color3.fromRGB(95, 104, 135), Green = Color3.fromRGB(72, 232, 120),
 }
 local SHOWN_Y, HIDDEN_Y = -26, 260
+local MENU_ATTRIBUTES = {"SpaceGUIOpen", "AdminPanelOpen"}
 
 local function new(class, parent, props)
 	local inst = Instance.new(class)
+	if inst:IsA("GuiObject") then inst.BorderSizePixel = 0 end
 	for k, v in pairs(props or {}) do inst[k] = v end
 	inst.Parent = parent
 	return inst
@@ -60,34 +64,38 @@ local function text(parent, value, size, props)
 end
 
 local keyboard = UserInputService.KeyboardEnabled and not GuiService:IsTenFootInterface()
-local function keycap(parent, label, x, y)
-	local cap = new("Frame", parent, {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(x, y),
-		Size = UDim2.fromOffset(34, 34), BackgroundColor3 = C.White, ZIndex = 6})
-	corner(cap, 9); gradient(cap, Color3.fromRGB(235, 240, 255), Color3.fromRGB(170, 185, 220)); stroke(cap, C.Ink, 3)
-	text(cap, label, 20, {Size = UDim2.fromScale(1, 1), TextColor3 = C.Navy, ZIndex = 7})
+local KEY = Color3.fromRGB(70, 80, 120)
+local function keycap(parent, label)
+	local cap = new("Frame", parent, {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 6, 0, -8),
+		Size = UDim2.fromOffset(28, 28), BackgroundColor3 = C.White, ZIndex = 6})
+	corner(cap, 8); gradient(cap, KEY:Lerp(C.White, 0.3), KEY); stroke(cap, C.Ink, 2.5)
+	text(cap, label, 17, {Size = UDim2.fromScale(1, 1), ZIndex = 7})
 	return cap
 end
 
--- Glossy 3D button like SpaceGUI's: dark lip underneath, gradient face, rim, gloss and a shine sweep
-local function cartoonButton(parent, w, h, top, bottom)
-	local depth = math.floor(h * 0.11)
+-- Glossy 3D button made the same way as SpaceGUI's: dark lip underneath, gradient face from a
+-- lighter top to the colour, cyan rim, gloss, plus a shine sweep
+local RADIUS = 14
+local function cartoonButton(parent, w, h, color, rim)
+	local top, bottom = color:Lerp(C.White, 0.3), color
+	local depth = math.max(4, math.floor(h * 0.1))
 	local holder = new("TextButton", parent, {Text = "", AutoButtonColor = false, BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 0), Size = UDim2.fromOffset(w, h)})
 	local scale = new("UIScale", holder, {Scale = 1})
-	local lip = new("Frame", holder, {BackgroundColor3 = bottom:Lerp(C.Ink, 0.5), Position = UDim2.fromOffset(0, depth),
+	local lip = new("Frame", holder, {BackgroundColor3 = bottom:Lerp(C.Ink, 0.55), Position = UDim2.fromOffset(0, depth),
 		Size = UDim2.new(1, 0, 1, -depth)})
-	corner(lip, 22); stroke(lip, C.Ink, 4)
+	corner(lip, RADIUS); stroke(lip, C.Ink, 3)
 	local face = new("Frame", holder, {BackgroundColor3 = C.White, Size = UDim2.new(1, 0, 1, -depth)})
-	corner(face, 22)
+	corner(face, RADIUS)
 	local faceGradient = gradient(face, top, bottom)
-	stroke(face, C.Ink, 4)
-	local rim = new("Frame", face, {BackgroundTransparency = 1, Position = UDim2.fromOffset(4, 4), Size = UDim2.new(1, -8, 1, -8)})
-	corner(rim, 18); stroke(rim, C.White, 2.5, 0.35)
-	local gloss = new("Frame", face, {BackgroundColor3 = C.White, BackgroundTransparency = 0.72,
-		Position = UDim2.fromOffset(10, 6), Size = UDim2.new(1, -20, 0.36, 0), ZIndex = 2})
-	corner(gloss, 12)
+	stroke(face, C.Ink, 3)
+	local rimFrame = new("Frame", face, {BackgroundTransparency = 1, Position = UDim2.fromOffset(3, 3), Size = UDim2.new(1, -6, 1, -6)})
+	corner(rimFrame, RADIUS - 3); stroke(rimFrame, rim or C.Cyan, 2, 0.1)
+	local gloss = new("Frame", face, {BackgroundColor3 = C.White, BackgroundTransparency = 0.8,
+		Position = UDim2.fromOffset(6, 4), Size = UDim2.new(1, -12, 0.36, 0), ZIndex = 2})
+	corner(gloss, 8)
 	local shine = new("Frame", face, {BackgroundColor3 = C.White, Size = UDim2.fromScale(1, 1), ZIndex = 3})
-	corner(shine, 22)
+	corner(shine, RADIUS)
 	local shineGradient = new("UIGradient", shine, {Rotation = 25, Offset = Vector2.new(-1, 0),
 		Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.42, 1),
 			NumberSequenceKeypoint.new(0.5, 0.45), NumberSequenceKeypoint.new(0.58, 1), NumberSequenceKeypoint.new(1, 1)})})
@@ -135,7 +143,7 @@ end
 -- LAUNCH: big orange button with a wiggling rocket
 local launchSlot = new("Frame", stage, {BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 1),
 	Position = UDim2.new(0.5, 0, 1, HIDDEN_Y), Size = UDim2.fromOffset(320, 116), Visible = false})
-local launch = cartoonButton(launchSlot, 320, 116, C.OrangeTop, C.Orange)
+local launch = cartoonButton(launchSlot, 320, 116, C.Orange, C.Gold)
 local rocket
 if Icons then
 	rocket = Icons.new("Rocket", launch.face, 78)
@@ -148,14 +156,19 @@ local launchText = text(launch.face, "LAUNCH!", 50, {Position = UDim2.fromOffset
 	Size = UDim2.new(1, Icons and -112 or 0, 1, 0)})
 local launchSub = text(launch.face, "", 18, {Position = UDim2.new(0, Icons and 100 or 0, 1, -30),
 	Size = UDim2.new(1, Icons and -112 or 0, 0, 22), Visible = false})
-if keyboard then keycap(launch.holder, "F", 304, 10) end
+if keyboard then keycap(launch.holder, "F") end
 
 -- MY PAD: smaller blue button, shown while you're off the pad
 local padSlot = new("Frame", stage, {BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 1),
-	Position = UDim2.new(0.5, 0, 1, SHOWN_Y), Size = UDim2.fromOffset(210, 72)})
-local pad = cartoonButton(padSlot, 210, 72, Color3.fromRGB(110, 190, 255), C.Blue)
-text(pad.face, "MY PAD", 30, {Size = UDim2.fromScale(1, 1)})
-if keyboard then keycap(pad.holder, "T", 196, 8) end
+	Position = UDim2.new(0.5, 0, 1, SHOWN_Y), Size = UDim2.fromOffset(220, 84)})
+local pad = cartoonButton(padSlot, 220, 84, Color3.fromRGB(24, 128, 226), C.Cyan)
+if Icons then
+	local padIcon = Icons.new("Pad", pad.face, 64)
+	padIcon.Position = UDim2.fromOffset(8, 6)
+	padIcon.ZIndex = 4
+end
+text(pad.face, "My Pad", 34, {Position = UDim2.fromOffset(Icons and 72 or 0, 0), Size = UDim2.new(1, Icons and -76 or 0, 1, 0)})
+if keyboard then keycap(pad.holder, "T") end
 
 -- Animations: a shine sweeps across LAUNCH, the button breathes and the rocket wiggles
 task.spawn(function()
@@ -209,6 +222,13 @@ local function slidePad(show)
 	end
 end
 
+local function menuOpen()
+	for _, name in ipairs(MENU_ATTRIBUTES) do
+		if player:GetAttribute(name) then return true end
+	end
+	return false
+end
+
 local REASONS = {
 	nopad = "Stand on your launch pad to launch! Press MY PAD to go there.",
 	cooldown = "Your jetpack is recharging...",
@@ -242,10 +262,12 @@ pad.holder.Activated:Connect(goToPad)
 
 -- Watch the pad and the jetpack's state
 local onPad, ready = false, nil
+local showLaunch, showPad = false, true
 local function setLook(isReady, cooldown)
 	if isReady ~= ready then
 		ready = isReady
-		launch.gradient.Color = isReady and ColorSequence.new(C.OrangeTop, C.Orange) or ColorSequence.new(C.GreyTop, C.Grey)
+		launch.gradient.Color = isReady and ColorSequence.new(C.Orange:Lerp(C.White, 0.3), C.Orange)
+			or ColorSequence.new(C.Grey:Lerp(C.White, 0.3), C.Grey)
 		launchText.TextSize = isReady and 50 or 34
 		launchText.Position = UDim2.fromOffset(Icons and 100 or 0, isReady and 0 or -10)
 		launchSub.Visible = not isReady
@@ -260,12 +282,11 @@ end
 task.spawn(function()
 	while gui.Parent do
 		local state, cooldown = Flight.Status()
-		local nowOnPad = Flight.OnLaunchPad()
-		if nowOnPad ~= onPad then
-			onPad = nowOnPad
-			slide(launchSlot, onPad)
-			slidePad(not onPad)
-		end
+		onPad = Flight.OnLaunchPad()
+		local hidden = menuOpen()
+		local wantLaunch, wantPad = onPad and not hidden, not onPad and not hidden
+		if wantLaunch ~= showLaunch then showLaunch = wantLaunch; slide(launchSlot, wantLaunch) end
+		if wantPad ~= showPad then showPad = wantPad; slidePad(wantPad) end
 		if state == "Thrust" then
 			launchText.Text = "FLYING!"; setLook(true, 0)
 		elseif cooldown > 0 then
@@ -279,6 +300,7 @@ end)
 
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
-	if input.KeyCode == Config.LaunchKey or input.KeyCode == Config.LaunchGamepadButton then doLaunch()
+	if input.KeyCode == Config.LaunchKey or input.KeyCode == Config.LaunchGamepadButton then
+		if showLaunch then doLaunch() end
 	elseif input.KeyCode == Config.TeleportKey or input.KeyCode == Config.TeleportGamepadButton then goToPad() end
 end)
