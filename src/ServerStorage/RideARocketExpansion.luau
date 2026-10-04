@@ -3,8 +3,8 @@
 -- Run from Studio's command bar (edit mode, not Play):
 --   require(game.ServerStorage.RideARocketExpansion).Apply()
 -- Every step is safe to repeat, so running a newer version over an older one updates it in place
--- (v2 rebuilds the farms 15% bigger and moves the wall to fit them).
-local VERSION = 2
+-- (v2 rebuilt the farms 15% bigger; v3 rebuilds them without the FARM gate sign).
+local VERSION = 3
 local function rgb(r,g,b) return Color3.fromRGB(r,g,b) end
 local SP, NEON, GROUND = Enum.Material.SmoothPlastic, Enum.Material.Neon, Enum.Material.Ground
 local C = {
@@ -148,7 +148,7 @@ local function buildFarm(plot, i, inner, outer)
 			block("Berry", crop, Vector3.new(1.1, 1.1, 1.1), base * CFrame.new(0, 2.5, 0), BERRY[r % #BERRY + 1], {decor=true, mat=NEON, shape=Enum.PartType.Ball})
 		end
 	end
-	-- Fence on all four sides, with a gate facing the station
+	-- Fence on all four sides, with an opening facing the station
 	local fence = model("Fence", farm)
 	local hw, hd, gate = FARM_W/2, depth/2, 7
 	local function rail(a, b)
@@ -165,15 +165,6 @@ local function buildFarm(plot, i, inner, outer)
 	local corners = {Vector3.new(-hw, 0, -hd), Vector3.new(hw, 0, -hd), Vector3.new(hw, 0, hd), Vector3.new(-hw, 0, hd)}
 	rail(corners[1], corners[2]); rail(corners[2], corners[3]); rail(corners[4], corners[1])
 	rail(corners[3], Vector3.new(gate, 0, hd)); rail(Vector3.new(-gate, 0, hd), corners[4])
-	-- Sign over the gate
-	for side = -1, 1, 2 do
-		block("GatePost", fence, Vector3.new(1, 7, 1), fcf * CFrame.new(side*gate, 3.5, hd), C.navy, {})
-	end
-	local sign = block("GateSign", fence, Vector3.new(gate*2 + 1, 1.6, 0.4), fcf * CFrame.new(0, 7.2, hd), C.navy, {})
-	block("GateSignGlow", fence, Vector3.new(gate*2 + 1.2, 0.2, 0.5), fcf * CFrame.new(0, 6.3, hd), C.blue, {decor=true, mat=NEON})
-	local gui = Instance.new("SurfaceGui"); gui.Face = Enum.NormalId.Back; gui.LightInfluence = 0; gui.Parent = sign
-	local label = Instance.new("TextLabel"); label.Size = UDim2.fromScale(1, 1); label.BackgroundTransparency = 1
-	label.Text = "FARM"; label.TextScaled = true; label.Font = Enum.Font.GothamBlack; label.TextColor3 = C.white; label.Parent = gui
 	return farm, fcf
 end
 
