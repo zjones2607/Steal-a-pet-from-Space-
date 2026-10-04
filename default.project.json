@@ -113,9 +113,6 @@
         "CoinEffects": {
           "$path": "src/StarterPlayer/StarterPlayerScripts/CoinEffects.client.luau"
         },
-        "JetpackHUD": {
-          "$path": "src/StarterPlayer/StarterPlayerScripts/JetpackHUD.client.luau"
-        },
         "PlanetEggFeedback": {
           "$path": "src/StarterPlayer/StarterPlayerScripts/PlanetEggFeedback.client.luau"
         },
