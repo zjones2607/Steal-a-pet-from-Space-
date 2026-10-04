@@ -51,7 +51,8 @@ end
 local function spawnCFrame(plot)
 	local p = pad(plot)
 	local centre = p.CFrame.Position
-	local toPlaza = Vector3.new(-centre.X, 0, -centre.Z).Unit
+	local plaza = station.SpawnHub.PlazaRim.CFrame.Position -- the base may not sit at the world's centre
+	local toPlaza = Vector3.new(plaza.X - centre.X, 0, plaza.Z - centre.Z).Unit
 	local floorY = centre.Y + p.Size.Y/2
 	local pos = Vector3.new(centre.X, floorY + 3, centre.Z) + toPlaza * SPAWN_DISTANCE
 	return CFrame.lookAt(pos, Vector3.new(centre.X, pos.Y, centre.Z))
