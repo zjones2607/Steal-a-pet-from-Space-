@@ -14,6 +14,9 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
 - **Everything else** (map, parts, GUI instances) lives only in the Studio place. `game.rbxl` is a snapshot of it, but it's **stale**: it predates the plaza/wall/farm expansion. Don't assume it shows the current map.
 - **Map changes are made with builder scripts in `src/ServerStorage`**, not by hand. The developer runs one command in Studio's command bar in edit mode (not Play), then saves/publishes.
   - `RideARocketBaseBuilder`: built the space station base. The layout constants are at the top: `Y0=8`, `R_PLOT=272`, `PLOT_R=81.6`, `HUB_R=50`.
+    - **The base has been moved in the owner's place.** The whole SpaceStation sits about 1000 studs higher than the builder put it. So never assume world coordinates: measure from the base itself.
+    - `RideARocketExpansion` measures everything from the spawn plaza: base origin = `SpawnHub.PlazaRim` centre minus `Y0`.
+    - `StationClaims` and `RideARocketLaunchSiteBuilder` aim at the plaza's real position.
   - `RideARocketExpansion`: run with `require(game.ServerStorage.RideARocketExpansion).Apply()`.
     - It grows the spawn plaza (radius 80) and moves the wall out (~417). It also builds a fenced 110×51 pet pen behind each of the 8 stations: `StationPlot<i>.PetPen`, whose `Floor` part is the walkable grass slab. The fence opening faces the station.
     - v4 replaced the old crop farms (`Farm`) with these pens. It moves any MapDetailer decor that lands inside a pen to `ServerStorage.RemovedMapBackups.Decor_InPetPens`. After re-running the MapDetailer, run `Apply({force = true})`.

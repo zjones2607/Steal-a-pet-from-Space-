@@ -361,11 +361,11 @@ function M.Build(cf)
 end
 
 -- The frame a plot's launch site is built in: the top of its Station_Pad, facing the plaza
-local function siteFrame(core)
+local function siteFrame(core, plaza)
 	local pad = core:FindFirstChild("Station_Pad")
 	local c = pad.CFrame.Position
 	local top = Vector3.new(c.X, c.Y + pad.Size.Y / 2, c.Z)
-	return CFrame.lookAt(top, top + Vector3.new(-c.X, 0, -c.Z).Unit)
+	return CFrame.lookAt(top, top + Vector3.new(plaza.X - c.X, 0, plaza.Z - c.Z).Unit)
 end
 
 -- RideARocketMapDetailer gives some parts (by name) a metal finish and keeps the old material in an
@@ -411,7 +411,7 @@ function M.Apply()
 			local old = core:FindFirstChild("LaunchSite")
 			local looks = old and detailerLooks(old) or {}
 			if old then old:Destroy() end
-			local site = M.Build(siteFrame(core))
+			local site = M.Build(siteFrame(core, station.SpawnHub.PlazaRim.CFrame.Position))
 			keepLooks(site, looks)
 			site.Parent = core
 			built += 1

@@ -7,7 +7,8 @@
 --   require(game.ServerStorage.RideARocketExpansion).Apply()
 -- Every step is safe to repeat, so running a newer version over an older one updates it in place
 -- (v2 rebuilt the farms 15% bigger; v3 rebuilt them without the FARM gate sign; v4 turns the farms into
--- pet pens: the crops are gone and the soil is a grass floor).
+-- pet pens: the crops are gone and the soil is a grass floor). Positions are measured from wherever the
+-- base really is (found from the spawn plaza), so it still works after the whole station has been moved.
 -- Decorations from RideARocketMapDetailer that stand inside a pen are moved (not deleted) to
 -- ServerStorage.RemovedMapBackups.Decor_InPetPens. If you re-run the detailer, run
 -- Apply({force = true}) afterwards to clear its new ones out of the pens.
@@ -18,7 +19,8 @@ local C = {
  white=rgb(240,243,248), light=rgb(200,206,216), blue=rgb(70,160,255),
  pen=rgb(128,196,94), -- a little lighter than the detailer's Earth grass (88,160,72), so the pens stand out
 }
--- Layout of the existing base (matches RideARocketBaseBuilder)
+-- Layout of the existing base (matches RideARocketBaseBuilder). These are measured from the base's
+-- own origin, so the base can have been moved anywhere: Apply finds it from the spawn plaza (O below).
 local Y0 = 8
 local R_PLOT = 272
 local PLOT_R = 81.6
@@ -30,10 +32,14 @@ local PEN_GAP = 4            -- space between a station's outer edge and its pen
 local WALL_GAP = 8           -- space between a pen and the wall
 local WALL_APOTHEM = R_PLOT + PLOT_R + PEN_GAP + PEN_DEPTH + WALL_GAP -- ~417 (was ~385.5); lowered if the ground runs out
 local GROUND_EDGE = 429      -- radius where the planet's top ends
+local MIN_WALL = R_PLOT + PLOT_R + PEN_GAP + 16 + WALL_GAP -- closest the wall may come in: keeps pens >= 16 deep
 local GATE = 7               -- half the width of the opening in the fence facing the station
 local BACKUP = "Decor_InPetPens"
 
 local M = {}
+-- Where the base actually is: the point the base builder called (0, 0, 0). The plaza rim is built centred
+-- at (0, Y0, 0), so this is its centre minus Y0. Set by Apply before anything else runs.
+local O = Vector3.new(0, 0, 0)
 local function block(name, parent, size, cf, color, opts)
 	opts = opts or {}
 	local p = Instance.new("Part")
@@ -68,8 +74,8 @@ local function groundAt(surface, r)
 	params.FilterDescendantsInstances = {surface}
 	for k = 0, 23 do
 		local a = k * math.pi / 12
-		local hit = workspace:Raycast(Vector3.new(math.sin(a)*r, Y0 + 30, math.cos(a)*r), Vector3.new(0, -80, 0), params)
-		if not hit or math.abs(hit.Position.Y - Y0) > 1.5 then return false end
+		local hit = workspace:Raycast(O + Vector3.new(math.sin(a)*r, Y0 + 30, math.cos(a)*r), Vector3.new(0, -80, 0), params)
+		if not hit or math.abs(hit.Position.Y - (O.Y + Y0)) > 1.5 then return false end
 	end
 	return true
 end
@@ -82,7 +88,7 @@ local function growHub(station, hubR)
 		local p = hub[name]; p.Size = p.Size + Vector3.new(0, 2*d, 2*d)
 	end
 	for _, f in ipairs(hub:GetChildren()) do
-		if f.Name == "Floodlight" then shift(f, flat(anchorPos(f)).Unit * d) end
+		if f.Name == "Floodlight" then shift(f, flat(anchorPos(f) - O).Unit * d) end
 	end
 	-- Walkways now start at the bigger plaza's edge: shorten each piece from the hub end
 	for _, w in ipairs(station.Walkways:GetChildren()) do
@@ -91,7 +97,7 @@ local function growHub(station, hubR)
 			w.Size = w.Size - Vector3.new(0, 0, d)
 			w.CFrame = w.CFrame + dir * (d/2)
 		elseif w.Name == "Floodlight" then
-			local pos = flat(anchorPos(w))
+			local pos = flat(anchorPos(w) - O)
 			local best, dir = -2, nil
 			for i = 1, 8 do local v = plotDir(i); local dot = v:Dot(pos.Unit); if dot > best then best, dir = dot, v end end
 			local oldMid = (oldR + 3 + R_PLOT - PLOT_R - 2) / 2
@@ -102,18 +108,18 @@ local function growHub(station, hubR)
 	local spawn = workspace:FindFirstChild("SpawnLocation")
 	if spawn then
 		spawn.Size = Vector3.new(32, spawn.Size.Y, 32)
-		spawn.CFrame = CFrame.new(0, spawn.CFrame.Y, hubR*0.55)
+		spawn.CFrame = CFrame.new(O.X, O.Y + Y0 + 2.3, O.Z + hubR*0.55) -- on the plaza, wherever the base is
 	end
 	return oldR
 end
 
 local function pushWall(station, apothem)
 	local wall = station.PerimeterWall
-	local oldApothem = flat(wall:FindFirstChildWhichIsA("Model").Border_Plinth.CFrame.Position).Magnitude
+	local oldApothem = flat(wall:FindFirstChildWhichIsA("Model").Border_Plinth.CFrame.Position - O).Magnitude
 	local k = apothem / oldApothem
 	for _, p in ipairs(parts(wall)) do
 		local pos = p.CFrame.Position
-		p.CFrame = CFrame.new(pos.X*k, pos.Y, pos.Z*k) * (p.CFrame - pos)
+		p.CFrame = CFrame.new(O.X + (pos.X - O.X)*k, pos.Y, O.Z + (pos.Z - O.Z)*k) * (p.CFrame - pos)
 		if p.Name ~= "Border_Pillar" and p.Name ~= "Border_PillarLight" then
 			p.Size = Vector3.new(p.Size.X*k, p.Size.Y, p.Size.Z)
 		end
@@ -122,14 +128,14 @@ local function pushWall(station, apothem)
 	local rocks, minR, maxR = {}, math.huge, 0
 	for _, rock in ipairs(station.OutsideRocks:GetChildren()) do
 		if rock:IsA("BasePart") then
-			local r = flat(rock.CFrame.Position).Magnitude
+			local r = flat(rock.CFrame.Position - O).Magnitude
 			table.insert(rocks, rock); minR = math.min(minR, r); maxR = math.max(maxR, r)
 		end
 	end
 	local lo = apothem + 5
 	local hi = math.max(lo, math.min(apothem + 17, GROUND_EDGE))
 	for _, rock in ipairs(rocks) do
-		local pos = flat(rock.CFrame.Position)
+		local pos = flat(rock.CFrame.Position - O)
 		local t = maxR > minR and (pos.Magnitude - minR) / (maxR - minR) or 0.5
 		rock.CFrame = rock.CFrame + pos.Unit * (lo + t*(hi - lo) - pos.Magnitude)
 	end
@@ -138,7 +144,7 @@ end
 local function buildPen(plot, i, inner, outer)
 	local dir = plotDir(i)
 	local depth = outer - inner
-	local center = dir * ((inner + outer)/2) + Vector3.new(0, Y0, 0)
+	local center = O + dir * ((inner + outer)/2) + Vector3.new(0, Y0, 0)
 	local fcf = CFrame.lookAt(center, center + dir) -- -Z points out to the wall, +Z back to the station
 	local pen = model("PetPen", plot)
 	pen:SetAttribute("Station", plot:GetAttribute("StationName"))
@@ -187,7 +193,7 @@ local function clearDecor(station, hubR, penBoxes)
 	for _, d in ipairs(station.BaseDecor:GetChildren()) do
 		local pos = anchorPos(d)
 		if not pos then continue end
-		local remove = flat(pos).Magnitude < hubR + 14
+		local remove = flat(pos - O).Magnitude < hubR + 14
 		for _, box in ipairs(penBoxes) do
 			if inBox(pos, box, 8) then remove = true end
 		end
@@ -212,7 +218,7 @@ local function moveDetailOutOfPens(station, penBoxes)
 		if folder:IsA("Folder") and folder.Name == "Detail" then
 			for _, item in ipairs(folder:GetChildren()) do
 				local pos = centre(item)
-				if not pos or pos.Y < Y0 - 4 or pos.Y > Y0 + 60 then continue end
+				if not pos or pos.Y < O.Y + Y0 - 4 or pos.Y > O.Y + Y0 + 60 then continue end
 				for _, box in ipairs(penBoxes) do
 					if inBox(pos, box, 1.5) then
 						if not store then
@@ -241,15 +247,17 @@ function M.Apply(opts)
 	if (station:GetAttribute("ExpansionVersion") or 0) >= VERSION and not opts.force then
 		warn("RideARocketExpansion: already applied to this place"); return
 	end
+	O = station.SpawnHub.PlazaRim.CFrame.Position - Vector3.new(0, Y0, 0)
 	local hubR = opts.hubRadius or HUB_R
 	local apothem = opts.wallApothem or WALL_APOTHEM
-	-- Pull the wall in if the planet's flat top ends before the target. Skipped when the probe
-	-- can't even see the ground inside the current wall (e.g. the surface isn't queryable).
+	-- Pull the wall in if the planet's flat top ends before the target, so it never hangs off the edge.
+	-- Skipped only when the probe can't see the ground well inside the base (e.g. the surface isn't
+	-- queryable); a bumpy edge further out just pulls the wall in, down to MIN_WALL.
 	local target = apothem
 	pcall(function()
 		local surface = station.SharedPlanet.HomeSurface
-		if not groundAt(surface, 380) then return end
-		while apothem > 392 and not groundAt(surface, apothem + 4) do apothem -= 2 end
+		if not groundAt(surface, 200) then return end
+		while apothem > MIN_WALL and not groundAt(surface, apothem + 4) do apothem -= 2 end
 	end)
 	if apothem < target then warn(("RideARocketExpansion: flat ground ends early, wall placed at %d"):format(apothem)) end
 	local recording
@@ -279,7 +287,7 @@ function M.Apply(opts)
 	if recording then
 		pcall(function() game:GetService("ChangeHistoryService"):FinishRecording(recording, Enum.FinishRecordingOperation.Commit) end)
 	end
-	print(("RideARocketExpansion: plaza radius %d, wall at %d, %d pet pens (%d studs deep), %d decorations moved out of the pens")
-		:format(hubR, apothem, #boxes, outer - inner, moved))
+	print(("RideARocketExpansion: base at (%.0f, %.0f, %.0f), plaza radius %d, wall at %d, %d pet pens (%d studs deep), %d decorations moved out of the pens")
+		:format(O.X, O.Y, O.Z, hubR, apothem, #boxes, outer - inner, moved))
 end
 return M
