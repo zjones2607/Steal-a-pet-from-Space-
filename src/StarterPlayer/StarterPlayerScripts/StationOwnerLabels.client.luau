@@ -1,10 +1,9 @@
--- StationOwnerLabels: highlights your own station's name sign (made by StationClaims) in gold,
+-- StationOwnerLabels: shows your own username sign (made by StationClaims) in gold,
 -- so it stands out from the other players' stations.
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 local station = workspace:WaitForChild("JetpackPetRescueMap"):WaitForChild("SpaceStation")
 local GOLD, WHITE = Color3.fromRGB(255, 215, 80), Color3.new(1, 1, 1)
-local SUBTITLE = Color3.fromRGB(160, 215, 255)
 
 local function refresh(plot)
 	local sign = plot:FindFirstChild("OwnerSign")
@@ -12,8 +11,6 @@ local function refresh(plot)
 	if not gui then return end
 	local mine = plot:GetAttribute("OwnerUserId") == player.UserId
 	gui.OwnerName.TextColor3 = mine and GOLD or WHITE
-	gui.Subtitle.Text = mine and "Your Station" or (plot:GetAttribute("StationName") or plot.Name)
-	gui.Subtitle.TextColor3 = mine and GOLD or SUBTITLE
 end
 
 local function watch(plot)
