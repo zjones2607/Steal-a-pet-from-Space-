@@ -21,6 +21,10 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
   - Ownership is stored in the plot attributes `OwnerUserId`/`OwnerName` and the player attribute `Station`. Use these to find a player's station or farm.
   - An `OwnerSign` billboard above each claimed station shows only the owner's username; it's hidden on free stations. `StationOwnerLabels.client.luau` turns your own sign gold.
   - A station's tier resets to 0 when its owner leaves. A 9th player gets no station and stays at the plaza, so max players should be 8.
+- **Admin panel**: `AdminPanel.server.luau` decides who's an admin when they join. That's the game owner (or group rank 254+), `ADMIN_USERNAMES`, and any real account in Studio.
+  - Only admins get `ServerStorage.AdminPanelClient` copied into their PlayerGui.
+  - Every `AdminRemote` request re-checks admin status and validates its arguments. Keep it that way when adding actions to the `actions` table.
+  - Announcements are filtered with TextService and shown to everyone by `Announcements.client.luau`.
 - **Not built yet**: Credits, pets, boosts and the shop. `SpaceGUI` has the UI for these and talks to a `SpaceGUIAction` RemoteEvent and a `SpaceGUIData` folder that no server script creates yet. See `SpaceGUIConfig`.
 
 ## Working in a cloud session

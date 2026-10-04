@@ -5,6 +5,9 @@
 
     "ServerScriptService": {
       "$ignoreUnknownInstances": true,
+      "AdminPanel": {
+        "$path": "src/ServerScriptService/AdminPanel.server.luau"
+      },
       "PlanetEggCollection": {
         "$path": "src/ServerScriptService/PlanetEggCollection.server.luau"
       },
@@ -24,6 +27,9 @@
 
     "ServerStorage": {
       "$ignoreUnknownInstances": true,
+      "AdminPanelClient": {
+        "$path": "src/ServerStorage/AdminPanelClient.client.luau"
+      },
       "RideARocketBaseBuilder": {
         "$path": "src/ServerStorage/RideARocketBaseBuilder.luau"
       },
@@ -59,6 +65,9 @@
       "$ignoreUnknownInstances": true,
       "StarterPlayerScripts": {
         "$ignoreUnknownInstances": true,
+        "Announcements": {
+          "$path": "src/StarterPlayer/StarterPlayerScripts/Announcements.client.luau"
+        },
         "PlanetEggFeedback": {
           "$path": "src/StarterPlayer/StarterPlayerScripts/PlanetEggFeedback.client.luau"
         },
