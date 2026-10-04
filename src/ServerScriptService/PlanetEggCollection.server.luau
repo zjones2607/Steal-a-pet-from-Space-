@@ -20,6 +20,7 @@ local function hook(prompt)
  hooked[prompt]=true
  prompt.Triggered:Connect(function(player)
   if not egg:IsDescendantOf(map) then return end
+  if not player:GetAttribute("DataLoaded") then return end -- wait until PlayerSaving has loaded their eggs
   local character=player.Character
   local root=character and character:FindFirstChild("HumanoidRootPart")
   local humanoid=character and character:FindFirstChildOfClass("Humanoid")

@@ -8,6 +8,9 @@
       "PlanetEggCollection": {
         "$path": "src/ServerScriptService/PlanetEggCollection.server.luau"
       },
+      "PlayerSaving": {
+        "$path": "src/ServerScriptService/PlayerSaving.server.luau"
+      },
       "StationTierInit": {
         "$path": "src/ServerScriptService/StationTierInit.server.luau"
       },
