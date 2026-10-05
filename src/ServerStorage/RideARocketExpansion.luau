@@ -67,15 +67,19 @@ local function inBox(pos, box, margin)
 	return math.abs(l.X) < box.w/2 + margin and math.abs(l.Z) < box.d/2 + margin
 end
 
--- Studio only: is there flat ground all the way round at radius r?
-local function groundAt(surface, r)
+-- Studio only: the height of the ground at angle a, radius r from the base centre (nil if none there)
+local function groundY(surface, a, r)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Include
 	params.FilterDescendantsInstances = {surface}
+	local hit = workspace:Raycast(O + Vector3.new(math.sin(a)*r, Y0 + 100, math.cos(a)*r), Vector3.new(0, -250, 0), params)
+	return hit and hit.Position.Y
+end
+-- Is there ground at refY (the height measured near the middle) all the way round at radius r?
+local function groundAt(surface, r, refY)
 	for k = 0, 23 do
-		local a = k * math.pi / 12
-		local hit = workspace:Raycast(O + Vector3.new(math.sin(a)*r, Y0 + 30, math.cos(a)*r), Vector3.new(0, -80, 0), params)
-		if not hit or math.abs(hit.Position.Y - (O.Y + Y0)) > 1.5 then return false end
+		local y = groundY(surface, k * math.pi / 12, r)
+		if not y or math.abs(y - refY) > 1.5 then return false end
 	end
 	return true
 end
@@ -256,8 +260,10 @@ function M.Apply(opts)
 	local target = apothem
 	pcall(function()
 		local surface = station.SharedPlanet.HomeSurface
-		if not groundAt(surface, 200) then return end
-		while apothem > MIN_WALL and not groundAt(surface, apothem + 4) do apothem -= 2 end
+		-- Measure the real ground height well inside the base (it needn't be exactly Y0 above O)
+		local refY = groundY(surface, 0, 200)
+		if not refY or not groundAt(surface, 200, refY) then return end
+		while apothem > MIN_WALL and not groundAt(surface, apothem + 4, refY) do apothem -= 2 end
 	end)
 	if apothem < target then warn(("RideARocketExpansion: flat ground ends early, wall placed at %d"):format(apothem)) end
 	local recording
