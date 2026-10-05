@@ -1,6 +1,7 @@
 -- PetPens: shows the equipped pets of every claimed station roaming around the pen behind it.
--- The server (PetsAndShop) lists each player's equipped pets, with how many copies of each, in their
--- "PenPets" attribute ("astro_dog:3,comet_fox:1"), and the map (RideARocketExpansion) gives every
+-- The server (PetsAndShop) lists every pet in each player's pen in their "PenPets" attribute
+-- ("Pet12:astro_dog:1.25:3,..." = the pet's own name, its kind, its size and its coins a second before
+-- boosts), and the map (RideARocketExpansion) gives every
 -- StationPlot a "PetPen" model whose flat "Floor" part is the ground inside the fence. This script
 -- builds the same 3D models SpaceGUI uses (SpaceGUI.SpaceModels) on this device, one per copy, and
 -- walks them around the floor, so the server never sends positions. A label above each pet shows its
@@ -8,7 +9,7 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
-local PET_SIZE = 3.5            -- studs: the longest side of each pet
+local PET_SIZE = 3.5            -- studs: the longest side of a normal-sized pet (bigger pets are bigger)
 local MAX_PETS = 30             -- per pen; when there are more, the best earners are the ones shown
 local EDGE_MARGIN = 4           -- studs kept clear along the floor's edges, so pets stay inside the fence
 local WANDER = 24               -- studs: how far one walk can take a pet
@@ -61,41 +62,17 @@ holder.Parent = workspace
 ----------------------------------------------------------------------------
 -- WHICH PETS GO IN A PEN
 ----------------------------------------------------------------------------
--- "astro_dog:3,comet_fox:1" -> {{Id = "astro_dog", Count = 3}, {Id = "comet_fox", Count = 1}}
-local function parsePenPets(text)
-	local list, byId = {}, {}
+-- "Pet12:astro_dog:1.25:3,..." -> {{Key = "Pet12", Id = "astro_dog", Size = 1.25, Income = 3}, ...}, at most
+-- `cap` of them (the server lists the best first). The Key is the pet's own name, so a pet keeps
+-- walking when another one is added.
+local function parsePenPets(text, cap)
+	local list = {}
 	if type(text) ~= "string" then return list end
-	for id, count in text:gmatch("([%w_]+):(%d+)") do
-		count = tonumber(count) or 0
-		if count > 0 then
-			if byId[id] then
-				byId[id].Count += count
-			else
-				byId[id] = {Id = id, Count = count}
-				table.insert(list, byId[id])
-			end
-		end
+	for key, id, size, income in text:gmatch("([%w_]+):([%w_]+):([%d%.]+):(%d+)") do
+		if #list >= cap then break end
+		table.insert(list, {Key = key, Id = id, Size = tonumber(size) or 1, Income = tonumber(income) or incomeOf(id)})
 	end
 	return list
-end
-
--- Every copy as its own pet, best earners first, at most `cap` of them: {{Id =, Key = "astro_dog#2"}, ...}.
--- The Key stays the same while the copy is still there, so a pet keeps walking when another one is added.
-local function penLayout(list, cap)
-	local sorted = table.clone(list)
-	table.sort(sorted, function(a, b)
-		local incomeA, incomeB = incomeOf(a.Id), incomeOf(b.Id)
-		if incomeA ~= incomeB then return incomeA > incomeB end
-		return a.Id < b.Id
-	end)
-	local pets = {}
-	for _, entry in ipairs(sorted) do
-		for k = 1, entry.Count do
-			if #pets >= cap then return pets end
-			table.insert(pets, {Id = entry.Id, Key = entry.Id .. "#" .. k})
-		end
-	end
-	return pets
 end
 
 -- 9 -> "9", 2.5 -> "2.5", 12345 -> "12.3K"
@@ -268,7 +245,7 @@ end
 
 -- Shows what one copy earns, with the owner's boosts
 local function setIncome(pet, multiplier)
-	local label = "+" .. short(incomeOf(pet.id) * multiplier) .. "/s"
+	local label = "+" .. short(pet.income * multiplier) .. "/s"
 	if pet.amount.Text == label then return end
 	pet.amount.Text = label
 	-- TextScaled can't size the label to fit its text, so it's sized from the number of characters
@@ -287,16 +264,19 @@ local function setOutline(pet, pixelsPerStud)
 	pet.strokes[3].Thickness = math.max(1, thickness * 0.7)
 end
 
-local function buildPet(pen, id, key, floorCF, top, hx, hz)
+local function buildPet(pen, w, floorCF, top, hx, hz)
+	local id, key = w.Id, w.Key
 	local ok, model = pcall(Models.Pet, id)
 	if not ok or not model then return nil end
 	local size = model:GetExtentsSize()
 	local longest = math.max(size.X, size.Y, size.Z)
-	if longest > 0 then model:ScaleTo(PET_SIZE / longest) end
+	-- Heavier pets are bigger: twice the size is about 1.4x as tall, a HUGE one over twice as tall
+	local scale = math.sqrt(math.clamp(w.Size or 1, 0.5, 6))
+	if longest > 0 then model:ScaleTo(PET_SIZE * scale / longest) end
 	local box
 	box, size = model:GetBoundingBox()
 	local center = CFrame.new(box.Position)
-	local pet = {key = key, id = id, model = model, half = size.Y / 2}
+	local pet = {key = key, id = id, income = w.Income, model = model, half = size.Y / 2}
 	local parts, offsets = {}, {}
 	for _, part in ipairs(model:GetDescendants()) do
 		if part:IsA("BasePart") then
@@ -391,7 +371,7 @@ local function sync(pen)
 		clearPets(pen)
 		return
 	end
-	local wanted = penLayout(parsePenPets(pen.owner:GetAttribute("PenPets")), MAX_PETS)
+	local wanted = parsePenPets(pen.owner:GetAttribute("PenPets"), MAX_PETS)
 	local keep = {}
 	for _, w in ipairs(wanted) do keep[w.Key] = true end
 	for i = #pen.pets, 1, -1 do
@@ -406,7 +386,7 @@ local function sync(pen)
 	local hx, hz = roamBounds(size)
 	for _, w in ipairs(wanted) do
 		if not pen.byKey[w.Key] then
-			local pet = buildPet(pen, w.Id, w.Key, floorCF, size.Y / 2, hx, hz)
+			local pet = buildPet(pen, w, floorCF, size.Y / 2, hx, hz)
 			if pet then
 				table.insert(pen.pets, pet)
 				pen.byKey[w.Key] = pet

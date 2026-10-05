@@ -66,6 +66,29 @@ Config.GamepadShopButton = Enum.KeyCode.ButtonY
 Config.Sounds = {Click = 0, Open = 0, Close = 0}
 
 -- Keys are used by your server and must stay unique.
+-- How big hatched pets come out. Chance is out of the total; Min..Max is the size (1 = normal).
+-- The biggest ones get a Label shown next to their weight.
+Config.PetSizes = {
+    {Chance = 70, Min = 0.7, Max = 1.3},
+    {Chance = 22, Min = 1.3, Max = 2},
+    {Chance = 7, Min = 2, Max = 3, Label = "BIG"},
+    {Chance = 1, Min = 3, Max = 5, Label = "HUGE"},
+}
+-- Coins a second one pet of this size earns (before x2 boosts), and how heavy it is in kg
+function Config.PetIncome(pet, size)
+    return math.max(1, math.floor((pet.Income or 0) * (size or 1) + 0.5))
+end
+function Config.PetKg(pet, size)
+    return math.floor((pet.BaseKg or 5) * (size or 1) * 10 + 0.5) / 10
+end
+function Config.PetSizeLabel(size)
+    local label
+    for _, band in ipairs(Config.PetSizes) do
+        if (size or 1) >= band.Min and band.Label then label = band.Label end
+    end
+    return label
+end
+
 Config.EggPacks = {
     {Key="Egg50", Name="50 Eggs", ProductId=0, Kind="Product", Random=true},
     {Key="Egg10", Name="10 Eggs", ProductId=0, Kind="Product", Random=true},
@@ -92,18 +115,20 @@ Config.CreditPacks = {
 }
 
 -- The server (PetsAndShop) hatches eggs with these Odds, so the odds the GUI shows are the real ones.
+-- BaseKg = how heavy a normal-sized one is. Every hatched pet gets its own size (see PetSizes):
+-- its weight is BaseKg x size, and it earns Income x size (rounded, at least 1).
 -- Income = coins per second that ONE copy of the pet earns while it's equipped. Equipped pets roam
 -- the pen behind your station (StarterPlayerScripts.PetPens), and every copy there earns its Income
 -- (doubled by the x2 Coins boost, and again by the x2 Credits pass). Keep Income a whole number.
 -- Each pet Id must match a model in SpaceModels (unknown ids get a generic blob).
 Config.Pets = {
-    {Id="astro_dog", Name="Astro Dog", Odds=39, Rarity="Common", Income=1},
-    {Id="moon_cat", Name="Moon Cat", Odds=24, Rarity="Common", Income=2},
-    {Id="alien_bunny", Name="Alien Bunny", Odds=18, Rarity="Uncommon", Income=5},
-    {Id="comet_fox", Name="Comet Fox", Odds=11, Rarity="Rare", Income=12},
-    {Id="robot_bear", Name="Robot Bear", Odds=6.5, Rarity="Epic", Income=30},
-    {Id="star_dragon", Name="Star Dragon", Odds=0.5, Rarity="Legendary", Income=200},
-    {Id="cosmic_golem", Name="Cosmic Golem", Odds=1, Rarity="Mythic", Income=75},
+    {Id="astro_dog", Name="Astro Dog", Odds=39, Rarity="Common", Income=1, BaseKg=8},
+    {Id="moon_cat", Name="Moon Cat", Odds=24, Rarity="Common", Income=2, BaseKg=4},
+    {Id="alien_bunny", Name="Alien Bunny", Odds=18, Rarity="Uncommon", Income=5, BaseKg=3},
+    {Id="comet_fox", Name="Comet Fox", Odds=11, Rarity="Rare", Income=12, BaseKg=6},
+    {Id="robot_bear", Name="Robot Bear", Odds=6.5, Rarity="Epic", Income=30, BaseKg=40},
+    {Id="star_dragon", Name="Star Dragon", Odds=0.5, Rarity="Legendary", Income=200, BaseKg=250},
+    {Id="cosmic_golem", Name="Cosmic Golem", Odds=1, Rarity="Mythic", Income=75, BaseKg=120},
 }
 
 return Config

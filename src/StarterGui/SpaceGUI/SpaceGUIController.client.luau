@@ -1265,9 +1265,179 @@ task.spawn(function()
     end
 end)
 
+-- PETS PAGE: every pet on its own row, best first, with its weight and coins a second.
+-- A search box and a rarity filter narrow the list; only the rows change while you type.
+local RARITIES = {"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic"}
+local RARITY_RANK = {Common = 1, Uncommon = 2, Rare = 3, Epic = 4, Legendary = 5, Mythic = 6}
+local PET_ROWS = 30                    -- rows shown at first; "Show more" adds this many
+local petView = {search = "", filter = "All", shown = PET_ROWS, filterOpen = false}
+
+local function petEarns(p, entry)
+    return Config.PetIncome(p, entry:GetAttribute("Size") or 1)
+end
+local function kgText(kg)
+    kg = tonumber(kg) or 0
+    if kg >= 1000 then return formatNumber(kg) .. " kg" end
+    return (("%.1f"):format(kg):gsub("%.0$", "")) .. " kg"
+end
+
+-- Same order as the server's Equip Best: most coins a second, then rarest, then heaviest
+local function sortedPets()
+    local list = {}
+    local folder = dataFolder("Pets")
+    for _, entry in ipairs(folder and folder:GetChildren() or {}) do
+        local p = entry:IsA("StringValue") and petById[entry.Value]
+        if p then table.insert(list, {entry = entry, p = p, earns = petEarns(p, entry), kg = entry:GetAttribute("Kg") or 0}) end
+    end
+    table.sort(list, function(a, b)
+        if a.earns ~= b.earns then return a.earns > b.earns end
+        local ra, rb = RARITY_RANK[a.p.Rarity] or 0, RARITY_RANK[b.p.Rarity] or 0
+        if ra ~= rb then return ra > rb end
+        if a.kg ~= b.kg then return a.kg > b.kg end
+        return a.entry.Name < b.entry.Name
+    end)
+    return list
+end
+
+local function petRow(item, order)
+    local entry, p = item.entry, item.p
+    local rarityCol = RarityColor[p.Rarity] or C.Cyan
+    local equipped = entry:GetAttribute("Equipped") == true
+    local H = 128
+    local f = panel(pages, "Pet_" .. entry.Name, 0, 0, bodyWidth, H, Color3.fromRGB(34, 46, 126), C.Deep,
+        equipped and C.Green or rarityCol, 14)
+    f.LayoutOrder = order
+    f:SetAttribute("PetRow", true)
+    aura(f, 64, H / 2, 100, rarityCol, 0.8)
+    local vp, ctl = Models.PetView(f, entry.Value, {Position = UDim2.fromOffset(10, 10), Size = UDim2.fromOffset(108, 108)})
+    local hit = hitbox(f)
+    hit.Size = UDim2.new(0, 124, 1, 0)
+    attachSpin(hit, vp, ctl)
+
+    local textW = bodyWidth - (narrow and 300 or 320)
+    local name = label(f, "Name", p.Name, 134, 8, textW, 38, narrow and 26 or 30, C.White)
+    name.TextTruncate = Enum.TextTruncate.AtEnd
+    -- Weight pill, with BIG / HUGE for the biggest ones
+    local size = entry:GetAttribute("Size") or 1
+    local tag = Config.PetSizeLabel(size)
+    local kgW = tag and 150 or 104
+    local kg = panel(f, "Kg", 134, 50, kgW, 32, tag and C.Magenta or C.Blue, tag and C.Violet or C.Navy, C.White, 16)
+    label(kg, "Text", kgText(item.kg) .. (tag and ("  " .. tag) or ""), 0, 0, kgW, 32, 19, C.White, CENTER)
+    local coins = label(f, "Earns", perSecondText(item.earns * (player:GetAttribute("IncomeMultiplier") or 1)),
+        134 + kgW + 12, 50, math.max(120, textW - kgW - 12), 32, 22, C.White)
+    goldText(coins)
+    label(f, "Rarity", p.Rarity:upper() .. (equipped and "   -   IN YOUR PEN" or ""), 134, 88, textW, 28, 18,
+        equipped and C.Green or rarityCol)
+    button(f, "Action", equipped and "Unequip" or "Equip", bodyWidth - 172, 32, 156, 60,
+        equipped and C.Purple or C.Green, function() sendAction("TogglePet", entry.Name) end, {rim = C.Cyan, textSize = 26})
+end
+
+local buildPetRows
+local function makePets()
+    makePenCard(2)
+    local all = sortedPets()
+
+    -- Search box + filter button
+    local bar = frame(pages, "PetTools", 0, 0, bodyWidth, 58)
+    bar.LayoutOrder = 3
+    local filterW = narrow and 170 or 210
+    local boxBack = panel(bar, "SearchBack", 0, 0, bodyWidth - filterW - 12, 54, Color3.fromRGB(24, 34, 100), C.Deep, C.Cyan, 14)
+    local box = new("TextBox", boxBack, {Name = "Search", Position = UDim2.fromOffset(16, 0),
+        Size = UDim2.new(1, -60, 1, 0), BackgroundTransparency = 1, Font = Enum.Font.FredokaOne, TextSize = 24,
+        TextColor3 = C.White, PlaceholderText = "Search pets...", PlaceholderColor3 = C.Muted,
+        Text = petView.search, ClearTextOnFocus = false, TextXAlignment = Enum.TextXAlignment.Left})
+    local clearBtn = new("TextButton", boxBack, {Name = "Clear", Text = "X", Font = Enum.Font.FredokaOne, TextSize = 22,
+        TextColor3 = C.Muted, BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0.5),
+        Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(36, 36), Visible = petView.search ~= ""})
+    local filterCol = petView.filter == "All" and C.Purple or (RarityColor[petView.filter] or C.Purple)
+    button(bar, "Filter", "Filter: " .. petView.filter, bodyWidth - filterW, 0, filterW, 54,
+        filterCol, function()
+            petView.filterOpen = not petView.filterOpen
+            local chips = pages:FindFirstChild("PetFilters")
+            if chips then chips.Visible = petView.filterOpen end
+        end, {rim = C.White, textSize = narrow and 20 or 22})
+
+    -- Rarity choices, shown under the bar while the filter is open
+    local chipH = 46
+    local chips = frame(pages, "PetFilters", 0, 0, bodyWidth, chipH)
+    chips.LayoutOrder = 4
+    chips.Visible = petView.filterOpen
+    local options = {"All"}
+    for _, r in ipairs(RARITIES) do table.insert(options, r) end
+    local chipW = math.floor((bodyWidth - (#options - 1) * 6) / #options)
+    for i, option in ipairs(options) do
+        local col = option == "All" and C.Purple or (RarityColor[option] or C.Purple)
+        local chosen = petView.filter == option
+        local _, face = button(chips, "Chip_" .. option, option == "Uncommon" and (narrow and "Uncom." or "Uncommon") or option,
+            (i - 1) * (chipW + 6), 0, chipW, chipH, chosen and col or col:Lerp(C.Deep, 0.55), function()
+                petView.filter = option
+                petView.filterOpen = false
+                petView.shown = PET_ROWS
+                render()
+            end, {textSize = narrow and 14 or 17, rim = chosen and C.White or nil})
+        if chosen then stroke(face, C.White, 3) end
+    end
+
+    -- Equip Best stays
+    local wrap = frame(pages, "EquipBestWrap", 0, 0, bodyWidth, 62)
+    wrap.LayoutOrder = 5
+    button(wrap, "EquipBest", "Equip Best", 0, 0, bodyWidth, 58, C.Purple,
+        function() sendAction("EquipBest") end, {rim = C.Cyan, textSize = 28})
+
+    local info = label(pages, "PetCount", "", 0, 0, bodyWidth, 30, 20, C.Muted, CENTER)
+    info.LayoutOrder = 6
+
+    buildPetRows = function()
+        for _, child in ipairs(pages:GetChildren()) do
+            if child:GetAttribute("PetRow") then child:Destroy() end
+        end
+        local query = petView.search:lower():gsub("^%s+", ""):gsub("%s+$", "")
+        local matches = {}
+        for _, item in ipairs(all) do
+            local okRarity = petView.filter == "All" or item.p.Rarity == petView.filter
+            local okName = query == "" or item.p.Name:lower():find(query, 1, true) ~= nil
+                or item.p.Rarity:lower():find(query, 1, true) ~= nil
+            if okRarity and okName then table.insert(matches, item) end
+        end
+        if #all == 0 then
+            info.Text = "No pets yet: collect eggs and they hatch in your pen!"
+        elseif #matches == 0 then
+            info.Text = "No pets match your search"
+        else
+            info.Text = ("%d pet%s, best first"):format(#matches, #matches == 1 and "" or "s")
+        end
+        for i = 1, math.min(#matches, petView.shown) do petRow(matches[i], 10 + i) end
+        if #matches > petView.shown then
+            local more = frame(pages, "ShowMore", 0, 0, bodyWidth, 62)
+            more.LayoutOrder = 100000
+            more:SetAttribute("PetRow", true)
+            button(more, "Button", ("Show more (%d left)"):format(#matches - petView.shown), 0, 0, bodyWidth, 58, C.Blue,
+                function()
+                    petView.shown += PET_ROWS
+                    buildPetRows()
+                end, {rim = C.Cyan, textSize = 24})
+        end
+    end
+    buildPetRows()
+
+    local pending = 0
+    box:GetPropertyChangedSignal("Text"):Connect(function()
+        petView.search = box.Text
+        petView.shown = PET_ROWS
+        clearBtn.Visible = box.Text ~= ""
+        pending += 1
+        local mine = pending
+        task.delay(0.2, function() -- wait for a pause in typing
+            if mine == pending and box.Parent then buildPetRows() end
+        end)
+    end)
+    clearBtn.Activated:Connect(function() box.Text = "" end)
+end
+
 local function makeInventory(category)
     table.clear(eggTimers)
     section(category:upper(), 1)
+    if category == "Pets" then return makePets() end
     local folder = dataFolder(category)
     local entries = {}
     if folder then
@@ -1275,7 +1445,6 @@ local function makeInventory(category)
             if v:IsA("StringValue") then table.insert(entries, v) end
         end
     end
-    if category == "Pets" then makePenCard(2) end
     table.sort(entries, function(a, b)
         -- Eggs: the ones hatching in the pen first, soonest first, then the ones waiting
         local penA, penB = a:GetAttribute("InPen") == true, b:GetAttribute("InPen") == true
@@ -1288,12 +1457,6 @@ local function makeInventory(category)
             Eggs = "Eggs you find go straight into the pen behind your station and hatch there.", Boosts = "Your saved boosts will appear here."}
         emptyState(category, "No " .. category:lower() .. " yet", descriptions[category])
         return
-    end
-    if category == "Pets" then
-        local wrap = frame(pages, "EquipBestWrap", 0, 0, bodyWidth, 62)
-        wrap.LayoutOrder = 3
-        button(wrap, "EquipBest", "Equip Best", 0, 0, bodyWidth, 58, C.Purple,
-            function() sendAction("EquipBest") end, {rim = C.Cyan, textSize = 28})
     end
     for i, entry in ipairs(entries) do
         local p = petById[entry.Value]
@@ -1360,7 +1523,8 @@ end
 -- Trigger from your server: remote:FireClient(player, "Hatched", petId)
 ----------------------------------------------------------------------------
 local hatchQueue, hatchBusy = {}, false
-local function playHatch(petId)
+local function playHatch(petId, info)
+    info = type(info) == "table" and info or {}
     local p = petById[petId]
     if not p then return end
     local col = RarityColor[p.Rarity] or C.Cyan
@@ -1445,15 +1609,19 @@ local function playHatch(petId)
 
     local name = label(card, "Name", p.Name, 10, 392, CW - 20, 64, 54, C.White, CENTER)
     goldText(name)
-    local odds = label(card, "Odds", tostring(p.Odds) .. "% chance", 10, 452, CW - 20, 30, 22, C.Muted, CENTER)
+    local oddsText = tostring(p.Odds) .. "% chance"
+    if type(info.Kg) == "number" then
+        local tag = Config.PetSizeLabel(info.Size or 1)
+        oddsText = kgText(info.Kg) .. (tag and (" " .. tag) or "") .. "   -   " .. oddsText
+    end
+    local odds = label(card, "Odds", oddsText, 10, 452, CW - 20, 30, 22, C.Muted, CENTER)
     odds.TextTransparency = 0.1
 
     local pill = panel(card, "Income", CW / 2 - 130, 488, 260, 52, C.Gold, C.GoldDeep, Color3.fromRGB(255, 248, 170), 26)
     icon("Coins", pill, 10, 6, 40)
-    label(pill, "Text", perSecondText(petIncome(p)), 52, 0, 200, 52, 28, C.White, CENTER)
+    label(pill, "Text", perSecondText(type(info.Income) == "number" and info.Income or petIncome(p)), 52, 0, 200, 52, 28, C.White, CENTER)
 
-    local entry = dataFolder("Pets") and dataFolder("Pets"):FindFirstChild(p.Id)
-    if not entry or (entry:GetAttribute("Count") or 1) <= 1 then
+    if info.New ~= false then
         local tag = panel(card, "New", CW - 96, 18, 92, 44, C.Red, Color3.fromRGB(170, 30, 60), C.White, 22)
         tag.Rotation = 12
         label(tag, "Text", "NEW!", 0, 0, 92, 44, 26, C.White, CENTER)
@@ -1494,14 +1662,15 @@ local function playHatch(petId)
     overlay:Destroy()
 end
 
-local function showHatch(petId)
+local function showHatch(petId, info)
     if not petById[petId] then return end
-    table.insert(hatchQueue, petId)
+    table.insert(hatchQueue, {petId, info})
     if hatchBusy then return end
     hatchBusy = true
     task.spawn(function()
         while #hatchQueue > 0 do
-            local ok, err = pcall(playHatch, table.remove(hatchQueue, 1))
+            local item = table.remove(hatchQueue, 1)
+            local ok, err = pcall(playHatch, item[1], item[2])
             if not ok then warn("Hatch reveal failed: " .. tostring(err)) end
         end
         hatchBusy = false
@@ -1899,7 +2068,11 @@ local function scheduleInventoryRefresh()
     refreshQueued = true
     task.defer(function()
         refreshQueued = false
-        if windowOpen and currentPage ~= "Shop" then render() end
+        if windowOpen and currentPage ~= "Shop" then
+            local scroll = pages.CanvasPosition -- stay where you were, e.g. after pressing Equip
+            render()
+            task.defer(function() pages.CanvasPosition = scroll end)
+        end
     end)
 end
 local function watchEntry(entry)
@@ -1967,8 +2140,8 @@ if Config.OpenShopOnJoin then openPage("Shop", "Featured") end
 task.spawn(function()
     local remote = ReplicatedStorage:WaitForChild(Config.ActionRemoteName, 30)
     if remote and remote:IsA("RemoteEvent") then
-        remote.OnClientEvent:Connect(function(action, value)
-            if action == "Hatched" then showHatch(value)
+        remote.OnClientEvent:Connect(function(action, value, info)
+            if action == "Hatched" then showHatch(value, info)
             elseif action == "Notice" and type(value) == "string" then toast(value) end
         end)
     end
