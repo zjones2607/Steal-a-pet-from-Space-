@@ -81,7 +81,7 @@ local function page(name)
 	local p = new("Frame", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Visible = false}, body)
 	new("UIListLayout", {Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder}, p)
 	pages[name] = p
-	local b = button(name, tabsBar, C.item, UDim2.new(0, 99, 1, 0))
+	local b = button(name, tabsBar, C.item, UDim2.new(0, 81, 1, 0))
 	tabButtons[name] = b
 	b.MouseButton1Click:Connect(function() showPage(name) end)
 	return p
@@ -165,6 +165,62 @@ hatchButton("Hatch my eggs", "Me", C.accent)
 hatchButton("Hatch everyone's eggs in this server", "Server", C.gold)
 hatchButton("Hatch everyone's eggs in every server", "Game", C.red)
 label("Every server: players in other servers get theirs hatched too.", eggsPage)
+
+-- Give tab: coins, pets and jetpacks for yourself
+local SpaceConfig = require(player:WaitForChild("PlayerGui"):WaitForChild("SpaceGUI"):WaitForChild("SpaceGUIConfig"))
+local JetpackConfig = require(ReplicatedStorage:WaitForChild("Jetpacks"):WaitForChild("JetpackConfig"))
+local givePage = page("Give")
+local function numberIn(box)
+	local n = tonumber((box.Text:gsub("[,%s]", "")))
+	if not n then status.Text = "Type a number first"; status.TextColor3 = C.red end
+	return n
+end
+label("Coins for yourself", givePage, C.text)
+local coinRow = row(givePage)
+local coinBox = textbox("Amount, like 1000000", coinRow, 200)
+button("Give", coinRow, C.gold, UDim2.new(0, 100, 1, 0)).MouseButton1Click:Connect(function()
+	local n = numberIn(coinBox); if n then call("GiveCoins", n, "Add") end
+end)
+button("Set to", coinRow, nil, UDim2.new(0, 100, 1, 0)).MouseButton1Click:Connect(function()
+	local n = numberIn(coinBox); if n then call("GiveCoins", n, "Set") end
+end)
+
+label("Pet for yourself (pick one)", givePage, C.text)
+local petList = new("ScrollingFrame", {Size = UDim2.new(1, 0, 0, 34), BackgroundTransparency = 1, BorderSizePixel = 0,
+	ScrollBarThickness = 4, ScrollingDirection = Enum.ScrollingDirection.X, AutomaticCanvasSize = Enum.AutomaticSize.X,
+	CanvasSize = UDim2.new()}, givePage)
+new("UIListLayout", {FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 4)}, petList)
+local chosenPet, petButtons = nil, {}
+for _, p in ipairs(SpaceConfig.Pets) do
+	local b = button(p.Name, petList, nil, UDim2.new(0, 104, 0, 28))
+	b.TextSize = 12
+	petButtons[p.Id] = b
+	b.MouseButton1Click:Connect(function()
+		chosenPet = p.Id
+		for id, other in pairs(petButtons) do
+			other.BackgroundColor3 = id == chosenPet and C.accent or C.item
+			other.TextColor3 = id == chosenPet and C.bg or C.text
+		end
+	end)
+end
+local petRow = row(givePage)
+local copiesBox = textbox("Copies (1-1000)", petRow, 200)
+copiesBox.Text = "1"
+button("Give pet", petRow, C.gold, UDim2.new(0, 120, 1, 0)).MouseButton1Click:Connect(function()
+	if not chosenPet then status.Text = "Pick a pet first"; status.TextColor3 = C.red; return end
+	local n = numberIn(copiesBox); if n then call("GivePet", chosenPet, n) end
+end)
+
+label("Jetpack for yourself (gives and equips it)", givePage, C.text)
+local jetList = new("ScrollingFrame", {Size = UDim2.new(1, 0, 0, 34), BackgroundTransparency = 1, BorderSizePixel = 0,
+	ScrollBarThickness = 4, ScrollingDirection = Enum.ScrollingDirection.X, AutomaticCanvasSize = Enum.AutomaticSize.X,
+	CanvasSize = UDim2.new()}, givePage)
+new("UIListLayout", {FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 4)}, jetList)
+for _, tier in ipairs(JetpackConfig.Tiers) do
+	local b = button(tier.Name, jetList, nil, UDim2.new(0, 120, 0, 28))
+	b.TextSize = 12
+	b.MouseButton1Click:Connect(function() call("GiveJetpack", tier.Id) end)
+end
 
 -- Open / close
 local function setOpen(open)

@@ -294,7 +294,7 @@ local function addEggs(player, kind, amount)
 	count.Value += amount
 end
 
-local function addPet(player, pet)
+local function addPet(player, pet, amount)
 	local pets = dataFolder(player, "Pets")
 	local entry = pets:FindFirstChild(pet.Id)
 	if not entry then
@@ -304,7 +304,7 @@ local function addPet(player, pet)
 		entry:SetAttribute("DisplayName", pet.Name)
 		entry:SetAttribute("Equipped", equippedCount(player) < MAX_EQUIPPED) -- new kinds go straight on if there's room
 	end
-	local count = (entry:GetAttribute("Count") or 0) + 1
+	local count = (entry:GetAttribute("Count") or 0) + (amount or 1)
 	entry:SetAttribute("Count", count)
 	entry:SetAttribute("Power", powerOf(pet.Id) * count)
 	entry.Parent = pets
@@ -403,6 +403,17 @@ instantHatch.OnInvoke = function(player)
 	return hatchReady(player, true)
 end
 instantHatch.Parent = ServerStorage
+
+-- The admin panel's "Give pet": adds `count` copies of a pet, just like hatching them
+local givePet = Instance.new("BindableFunction")
+givePet.Name = "GivePet"
+givePet.OnInvoke = function(player, id, count)
+	local pet = petInfo(id)
+	if not ready[player] or not pet or type(count) ~= "number" or count < 1 then return false end
+	addPet(player, pet, math.floor(count))
+	return true
+end
+givePet.Parent = ServerStorage
 
 ----------------------------------------------------------------------------
 -- BUTTONS IN SPACEGUI   (sendAction(action, value) on the client)

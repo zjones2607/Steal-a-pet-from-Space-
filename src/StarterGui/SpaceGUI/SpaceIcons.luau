@@ -3,7 +3,7 @@
 -- Put it inside the SpaceGUI ScreenGui next to SpaceGUIController.
 --
 --   Icons.new(name, parent, size) -> Frame (square, size x size pixels)
---   names: Cart Book Star Rocket Coins Egg Helmet Potion Clock Moon Robux Gift Plus Check Jetpack
+--   names: Cart Book Star Rocket Coins Egg Helmet Potion Clock Moon Robux Gift Plus Check Jetpack Pen
 
 local Icons = {}
 local INK = Color3.fromRGB(3, 8, 30)
@@ -119,6 +119,22 @@ builders.Jetpack = function(S)
     end
     S(0.5, 0.36, 0.14, 0.14, rgb(130, 240, 255), rgb(20, 130, 230), {})
     S(0.5, 0.6, 0.2, 0.07, rgb(255, 215, 90), rgb(230, 140, 20), {r = 0.3})
+end
+
+-- The pet pen: a wooden fence on a patch of grass, with a big paw print in front
+builders.Pen = function(S)
+    local wood1, wood2 = rgb(240, 185, 110), rgb(175, 105, 45)
+    S(0.5, 0.82, 0.96, 0.3, rgb(130, 235, 110), rgb(45, 160, 75), {})
+    for _, x in ipairs({0.13, 0.37, 0.63, 0.87}) do
+        S(x, 0.5, 0.13, 0.62, wood1, wood2, {r = 0.35})
+    end
+    S(0.5, 0.36, 0.9, 0.1, wood1, wood2, {r = 0.3})
+    S(0.5, 0.6, 0.9, 0.1, wood1, wood2, {r = 0.3})
+    -- paw print
+    S(0.5, 0.71, 0.34, 0.27, WHITE, rgb(215, 222, 245), {})
+    for _, toe in ipairs({{0.31, 0.53}, {0.42, 0.44}, {0.58, 0.44}, {0.69, 0.53}}) do
+        S(toe[1], toe[2], 0.12, 0.14, WHITE, rgb(215, 222, 245), {})
+    end
 end
 
 builders.Clock = function(S)

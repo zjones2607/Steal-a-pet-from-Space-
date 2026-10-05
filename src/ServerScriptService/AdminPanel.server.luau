@@ -21,10 +21,14 @@ local RunService = game:GetService("RunService")
 local TextService = game:GetService("TextService")
 local MessagingService = game:GetService("MessagingService")
 local Upgrades = require(script.Parent:WaitForChild("StationUpgrades"))
+local JetpackConfig = require(ReplicatedStorage:WaitForChild("Jetpacks"):WaitForChild("JetpackConfig"))
+local SpaceConfig = require(game:GetService("StarterGui"):WaitForChild("SpaceGUI"):WaitForChild("SpaceGUIConfig"))
 local station = workspace:WaitForChild("JetpackPetRescueMap"):WaitForChild("SpaceStation")
 
 local SPEEDS = {[16]=true, [32]=true, [64]=true, [100]=true}
 local MAX_MESSAGE = 200
+local MAX_COINS = 1e15       -- the most coins one Give or Set can use
+local MAX_PET_COPIES = 1000  -- the most copies of a pet one Give can add
 local HATCH_TOPIC = "AdminInstantHatch" -- tells every server of the game to hatch its players' eggs
 
 local admins = {}             -- [player] = true, decided once when they join
@@ -164,6 +168,46 @@ function actions.Announce(admin, text)
 	if not clean then return false, "Message couldn't be checked by Roblox's filter, try again" end
 	announce:FireAllClients(clean, admin.Name)
 	log(admin, "announced: " .. clean); return true, "Announcement sent"
+end
+
+-- GIVE TAB: admins give things to THEMSELVES only (never to other players)
+local function wholeNumber(n, low, high)
+	return type(n) == "number" and n == n and n == math.floor(n) and n >= low and n <= high
+end
+function actions.GiveCoins(admin, amount, mode)
+	if not wholeNumber(amount, mode == "Set" and 0 or 1, MAX_COINS) then return false, "Type a whole number of coins" end
+	if not admin:GetAttribute("DataLoaded") then return false, "Your data hasn't loaded yet" end
+	local coins = admin:GetAttribute("Coins") or 0
+	local new = mode == "Set" and amount or coins + amount
+	admin:SetAttribute("Coins", new)
+	log(admin, (mode == "Set" and "set their coins to %d" or "gave themselves %d coins"):format(mode == "Set" and new or amount))
+	return true, mode == "Set" and ("Your coins are now %d"):format(new) or ("Gave you %d coins"):format(amount)
+end
+function actions.GivePet(admin, id, count)
+	local pet
+	for _, p in ipairs(SpaceConfig.Pets) do if p.Id == id then pet = p end end
+	if not pet then return false, "Pick a pet" end
+	if not wholeNumber(count, 1, MAX_PET_COPIES) then return false, ("Copies must be 1-%d"):format(MAX_PET_COPIES) end
+	local give = ServerStorage:WaitForChild("GivePet", 5)
+	if not give or not give:Invoke(admin, id, count) then return false, "Your data hasn't loaded yet" end
+	log(admin, ("gave themselves %d %s"):format(count, pet.Name))
+	return true, ("Gave you %d %s"):format(count, pet.Name)
+end
+function actions.GiveJetpack(admin, id)
+	local tier = type(id) == "string" and JetpackConfig.ById[id]
+	if not tier then return false, "Pick a jetpack" end
+	if not admin:GetAttribute("DataLoaded") then return false, "Your data hasn't loaded yet" end
+	local owned = admin:FindFirstChild(JetpackConfig.OwnedFolder)
+	if not owned then return false, "Your jetpacks haven't loaded yet" end
+	if not owned:FindFirstChild(tier.Id) then
+		local mark = Instance.new("BoolValue")
+		mark.Name = tier.Id
+		mark.Value = true
+		mark.Parent = owned
+	end
+	admin:SetAttribute(JetpackConfig.EquippedAttribute, tier.Id) -- Jetpacks straps it on
+	log(admin, "gave themselves the " .. tier.Name)
+	return true, ("Gave you the %s and equipped it"):format(tier.Name)
 end
 
 -- Hatches the pen eggs of these players straight away (PetsAndShop does the hatching). Returns how many.
