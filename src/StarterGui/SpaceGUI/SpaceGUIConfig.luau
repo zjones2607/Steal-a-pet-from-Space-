@@ -35,6 +35,14 @@ Config.GiftsEnabled = false
 --   remote:FireClient(player, "Hatched", "astro_dog")   (remote = Config.ActionRemoteName)
 Config.PreviewHatchKey = Enum.KeyCode.H
 
+-- Eggs you collect (or buy) go straight into the pen behind your station and hatch on their own
+-- after this many seconds. The x2 Growth pass halves it. Give one kind its own time with
+-- EggHatchSecondsByKind, e.g. {["Galaxy Egg"] = 120}. PenEggSlots eggs fit in a pen at once;
+-- the rest wait on the Eggs page and move in as soon as there's room.
+Config.EggHatchSeconds = 60
+Config.EggHatchSecondsByKind = {}
+Config.PenEggSlots = 12
+
 -- Gamepad button that opens/closes the shop (keyboard uses B).
 Config.GamepadShopButton = Enum.KeyCode.ButtonY
 

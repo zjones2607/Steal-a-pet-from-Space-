@@ -81,7 +81,7 @@ local function page(name)
 	local p = new("Frame", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Visible = false}, body)
 	new("UIListLayout", {Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder}, p)
 	pages[name] = p
-	local b = button(name, tabsBar, C.item, UDim2.new(0, 100, 1, 0))
+	local b = button(name, tabsBar, C.item, UDim2.new(0, 99, 1, 0))
 	tabButtons[name] = b
 	b.MouseButton1Click:Connect(function() showPage(name) end)
 	return p
@@ -153,6 +153,18 @@ button("Send", sendRow, C.accent).MouseButton1Click:Connect(function()
 	local ok = call("Announce", message.Text)
 	if ok then message.Text = "" end
 end)
+
+-- Eggs tab: hatch the eggs in pens straight away
+local eggsPage = page("Eggs")
+label("Instantly hatch the eggs in pens", eggsPage, C.text)
+local function hatchButton(text, scope, color)
+	local b = button(text, eggsPage, color, UDim2.new(1, 0, 0, 36))
+	b.MouseButton1Click:Connect(function() call("HatchEggs", scope) end)
+end
+hatchButton("Hatch my eggs", "Me", C.accent)
+hatchButton("Hatch everyone's eggs in this server", "Server", C.gold)
+hatchButton("Hatch everyone's eggs in every server", "Game", C.red)
+label("Every server: players in other servers get theirs hatched too.", eggsPage)
 
 -- Open / close
 local function setOpen(open)

@@ -1179,7 +1179,33 @@ local function perSecondText(coins)
     return "+" .. formatNumber(coins) .. (coins == 1 and " coin/s" or " coins/s")
 end
 
+-- Countdowns on the Eggs page for the eggs hatching in the pen: {label, bar, hatchAt, seconds}
+local eggTimers = {}
+local function fmtClock(seconds)
+    seconds = math.max(0, math.ceil(seconds))
+    local m, sec = math.floor(seconds / 60), seconds % 60
+    if m >= 60 then return ("%d:%02d:%02d"):format(math.floor(m / 60), m % 60, sec) end
+    return ("%d:%02d"):format(m, sec)
+end
+local function updateEggTimers()
+    local now = workspace:GetServerTimeNow()
+    for _, t in ipairs(eggTimers) do
+        if t.label.Parent then
+            local left = t.hatchAt - now
+            t.label.Text = left > 0 and ("Hatching in " .. fmtClock(left)) or "Hatching now!"
+            t.bar.Size = UDim2.fromScale(math.clamp(1 - left / math.max(t.seconds, 1), 0, 1), 1)
+        end
+    end
+end
+task.spawn(function()
+    while true do
+        task.wait(0.2)
+        if #eggTimers > 0 then updateEggTimers() end
+    end
+end)
+
 local function makeInventory(category)
+    table.clear(eggTimers)
     section(category:upper(), 1)
     local folder = dataFolder(category)
     local entries = {}
@@ -1188,10 +1214,16 @@ local function makeInventory(category)
             if v:IsA("StringValue") then table.insert(entries, v) end
         end
     end
-    table.sort(entries, function(a, b) return a.Name < b.Name end)
+    table.sort(entries, function(a, b)
+        -- Eggs: the ones hatching in the pen first, soonest first, then the ones waiting
+        local penA, penB = a:GetAttribute("InPen") == true, b:GetAttribute("InPen") == true
+        if penA ~= penB then return penA end
+        if penA then return (a:GetAttribute("HatchAt") or 0) < (b:GetAttribute("HatchAt") or 0) end
+        return a.Name < b.Name
+    end)
     if #entries == 0 then
         local descriptions = {Pets = "Your collected pets will appear here.",
-            Eggs = "Your eggs will appear here.", Boosts = "Your saved boosts will appear here."}
+            Eggs = "Eggs you find go straight into the pen behind your station and hatch there.", Boosts = "Your saved boosts will appear here."}
         emptyState(category, "No " .. category:lower() .. " yet", descriptions[category])
         return
     end
@@ -1222,6 +1254,27 @@ local function makeInventory(category)
         local nameW = bodyWidth - (narrow and 300 or 320)
         label(f, "Name", name, 132, 12, nameW, 50, narrow and 26 or 30, C.White)
         local count = entry:GetAttribute("Count") or 1
+        if category == "Eggs" then
+            local inPen = entry:GetAttribute("InPen")
+            local wide = bodyWidth - 150
+            if inPen then
+                -- A countdown and a bar that fills up until it hatches
+                local timerLabel = label(f, "Details", "", 132, 60, wide, 32, 23, C.White)
+                goldText(timerLabel)
+                local track = new("Frame", f, {Name = "Progress", Position = UDim2.fromOffset(132, 96),
+                    Size = UDim2.fromOffset(wide, 12), BackgroundColor3 = C.Ink, BorderSizePixel = 0})
+                corner(track, 6)
+                local bar = new("Frame", track, {Name = "Fill", Size = UDim2.fromScale(0, 1),
+                    BackgroundColor3 = C.White, BorderSizePixel = 0})
+                corner(bar, 6)
+                vgrad(bar, Color3.fromRGB(150, 255, 170), C.Green)
+                table.insert(eggTimers, {label = timerLabel, bar = bar,
+                    hatchAt = entry:GetAttribute("HatchAt") or 0, seconds = entry:GetAttribute("Seconds") or 60})
+            else
+                label(f, "Details", ("x%d waiting for room in your pen"):format(count), 132, 64, wide, 36, 23, C.Muted)
+            end
+            continue
+        end
         if category == "Pets" and p then
             -- What these pets earn a second (all copies, with x2 boosts) instead of their Power
             local income = label(f, "Details", perSecondText(petIncome(p, count))
@@ -1230,12 +1283,12 @@ local function makeInventory(category)
         else
             label(f, "Details", "Count: " .. tostring(count), 132, 64, nameW, 36, 23, C.Muted)
         end
-        local action = category == "Pets" and "TogglePet" or category == "Eggs" and "HatchEgg" or "UseBoost"
-        local text = category == "Pets" and (entry:GetAttribute("Equipped") and "Unequip" or "Equip")
-            or category == "Eggs" and "Hatch" or "Use"
+        local action = category == "Pets" and "TogglePet" or "UseBoost"
+        local text = category == "Pets" and (entry:GetAttribute("Equipped") and "Unequip" or "Equip") or "Use"
         button(f, "Action", text, bodyWidth - 172, 30, 156, 60, C.Purple,
             function() sendAction(action, entry.Name) end, {rim = C.Cyan, textSize = 26})
     end
+    updateEggTimers()
 end
 
 ----------------------------------------------------------------------------

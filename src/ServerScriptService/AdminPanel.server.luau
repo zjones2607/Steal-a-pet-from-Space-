@@ -19,11 +19,13 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 local RunService = game:GetService("RunService")
 local TextService = game:GetService("TextService")
+local MessagingService = game:GetService("MessagingService")
 local Upgrades = require(script.Parent:WaitForChild("StationUpgrades"))
 local station = workspace:WaitForChild("JetpackPetRescueMap"):WaitForChild("SpaceStation")
 
 local SPEEDS = {[16]=true, [32]=true, [64]=true, [100]=true}
 local MAX_MESSAGE = 200
+local HATCH_TOPIC = "AdminInstantHatch" -- tells every server of the game to hatch its players' eggs
 
 local admins = {}             -- [player] = true, decided once when they join
 local adminIds = {}           -- usernames from ADMIN_USERNAMES resolved to user IDs
@@ -163,6 +165,50 @@ function actions.Announce(admin, text)
 	announce:FireAllClients(clean, admin.Name)
 	log(admin, "announced: " .. clean); return true, "Announcement sent"
 end
+
+-- Hatches the pen eggs of these players straight away (PetsAndShop does the hatching). Returns how many.
+local function hatchFor(players)
+	local hatch = ServerStorage:WaitForChild("InstantHatch", 5)
+	if not hatch then return nil end
+	local total = 0
+	for _, p in ipairs(players) do
+		local ok, n = pcall(hatch.Invoke, hatch, p)
+		if ok and type(n) == "number" then total += n end
+	end
+	return total
+end
+local function eggsText(n) return ("%d egg%s"):format(n, n == 1 and "" or "s") end
+function actions.HatchEggs(admin, scope)
+	if scope == "Me" then
+		local n = hatchFor({admin})
+		if not n then return false, "Pets aren't set up in this server" end
+		log(admin, "instantly hatched their eggs")
+		return true, n > 0 and ("Hatched " .. eggsText(n) .. " in your pen") or "You have no eggs in your pen"
+	elseif scope == "Server" or scope == "Game" then
+		local n = hatchFor(Players:GetPlayers())
+		if not n then return false, "Pets aren't set up in this server" end
+		if scope == "Server" then
+			log(admin, "instantly hatched everyone's eggs in this server")
+			return true, "Hatched " .. eggsText(n) .. " for everyone in this server"
+		end
+		local ok = pcall(MessagingService.PublishAsync, MessagingService, HATCH_TOPIC,
+			{Admin = admin.Name, From = game.JobId})
+		log(admin, "instantly hatched everyone's eggs in every server")
+		if not ok then return true, "Hatched " .. eggsText(n) .. " here, but couldn't reach the other servers" end
+		return true, "Hatched " .. eggsText(n) .. " here, and told every other server to hatch theirs"
+	end
+	return false, "Unknown choice"
+end
+
+-- Another server's admin pressed "all servers": hatch everyone here too
+task.spawn(function()
+	pcall(MessagingService.SubscribeAsync, MessagingService, HATCH_TOPIC, function(message)
+		local data = type(message) == "table" and message.Data
+		if type(data) ~= "table" or data.From == game.JobId then return end
+		local n = hatchFor(Players:GetPlayers()) or 0
+		print(("[Admin] %s hatched everyone's eggs in every server (%s here)"):format(tostring(data.Admin), eggsText(n)))
+	end)
+end)
 
 remote.OnServerInvoke = function(player, action, ...)
 	if not admins[player] then

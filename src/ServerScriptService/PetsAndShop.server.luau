@@ -2,8 +2,14 @@
 -- SpaceGUIAction remote and each player's SpaceGUIData folder (Eggs, Pets, Boosts) that SpaceGUI
 -- shows, and handles every button SpaceGUI sends. Nothing the GUI asks for is trusted: each request
 -- is checked against what the player really has.
---   Eggs: the eggs found on the planets (EggInventory, filled by PlanetEggCollection). Hatching one
---     picks a pet with the odds in SpaceGUIConfig.Pets, so the odds the shop shows are the real ones.
+--   Eggs: the eggs found on the planets (EggInventory, filled by PlanetEggCollection) or bought go
+--     straight into the pen behind your station (IncubatingEggs: one StringValue per egg, its kind in
+--     Value, with HatchAt = the unix time it hatches and Seconds = how long it takes). Each one hatches
+--     on its own when its time is up, even while you're offline. Only SpaceGUIConfig.PenEggSlots fit at
+--     once; the rest wait in EggInventory. Hatching picks a pet with the odds in SpaceGUIConfig.Pets,
+--     so the odds the shop shows are the real ones. StarterPlayerScripts.PenEggs shows the eggs.
+--     ServerStorage.InstantHatch (a BindableFunction, used by the admin panel) hatches a player's
+--     pen eggs straight away.
 --   Pets: one entry per kind of pet. Hatching one you already have adds to its Count, and its Power
 --     grows with it. Up to MAX_EQUIPPED kinds can be equipped. Every copy of an equipped pet roams
 --     the pen behind your station (StarterPlayerScripts.PetPens builds them from PenPets) and earns
@@ -26,7 +32,6 @@ local Config = require(StarterGui:WaitForChild("SpaceGUI"):WaitForChild("SpaceGU
 local saveNow = ServerStorage:WaitForChild("SavePlayerNow")
 
 local MAX_EQUIPPED = 3
-local HATCH_COOLDOWN = 2          -- seconds between hatches, so the reveal can play
 local ACTION_COOLDOWN = 0.2       -- seconds between any two requests from one player
 local BOOST_DROP_CHANCE = 0.15    -- chance that a hatch also gives a random boost
 local SHOP_EGG = "Galaxy Egg"     -- the egg that Robux egg packs give
@@ -50,7 +55,9 @@ local PRODUCT_REWARDS = {
 	Credits24K = {Coins = 24000}, Credits200K = {Coins = 200000}, Credits800K = {Coins = 800000},
 }
 -- Game passes this script knows. Owning one sets the player attribute "Pass_<Key>".
-local PASS_KEYS = {Credits2x = true}
+local PASS_KEYS = {Credits2x = true, Growth2x = true}
+local INCUBATOR = "IncubatingEggs"
+local PEN_EGGS = Config.PenEggSlots or 12
 
 local remote = Instance.new("RemoteEvent")
 remote.Name = Config.ActionRemoteName
@@ -59,7 +66,6 @@ remote.Parent = ReplicatedStorage
 local rng = Random.new()
 local ready = {}       -- [player] = true once their save has loaded and their folders are set up
 local lastAction = {}  -- [player] = os.clock() of their last request
-local lastHatch = {}
 
 local function notice(player, text) remote:FireClient(player, "Notice", text) end
 
@@ -170,8 +176,64 @@ local function syncEggs(player)
 			if entry:GetAttribute("Count") ~= count.Value then entry:SetAttribute("Count", count.Value) end
 		end
 	end
+	-- The eggs hatching in the pen, as "Pen_Egg3" entries with their timer
+	for _, egg in ipairs(folder(player, INCUBATOR):GetChildren()) do
+		if egg:IsA("StringValue") then
+			local name = "Pen_" .. egg.Name
+			keep[name] = true
+			local entry = shown:FindFirstChild(name)
+			if not entry then
+				entry = Instance.new("StringValue")
+				entry.Name = name
+				entry:SetAttribute("InPen", true)
+				entry.Parent = shown
+			end
+			if entry.Value ~= egg.Value then entry.Value = egg.Value end
+			for _, key in ipairs({"HatchAt", "Seconds"}) do
+				if entry:GetAttribute(key) ~= egg:GetAttribute(key) then entry:SetAttribute(key, egg:GetAttribute(key)) end
+			end
+		end
+	end
 	for _, entry in ipairs(shown:GetChildren()) do
 		if not keep[entry.Name] then entry:Destroy() end
+	end
+end
+
+local function hatchSeconds(player, kind)
+	local byKind = Config.EggHatchSecondsByKind
+	local seconds = tonumber(byKind and byKind[kind]) or tonumber(Config.EggHatchSeconds) or 60
+	if player:GetAttribute("Pass_Growth2x") then seconds /= 2 end
+	return math.max(1, math.floor(seconds + 0.5))
+end
+
+-- Moves waiting eggs into the pen until it's full. Eggs are called Egg1..EggN after the pen spot
+-- they sit in, so an egg keeps its spot until it hatches.
+local function fillPen(player)
+	local incubator = folder(player, INCUBATOR)
+	local inventory = folder(player, "EggInventory")
+	local used, n = {}, 0
+	for _, egg in ipairs(incubator:GetChildren()) do used[egg.Name] = true; n += 1 end
+	local slot = 1
+	while n < PEN_EGGS do
+		local waiting = {}
+		for _, count in ipairs(inventory:GetChildren()) do
+			if count:IsA("IntValue") and count.Value > 0 then table.insert(waiting, count) end
+		end
+		if #waiting == 0 then break end
+		table.sort(waiting, function(a, b) return a.Name < b.Name end)
+		local count, kind = waiting[1], waiting[1].Name
+		count.Value -= 1
+		if count.Value <= 0 then count:Destroy() end
+		while used["Egg" .. slot] do slot += 1 end
+		local seconds = hatchSeconds(player, kind)
+		local egg = Instance.new("StringValue")
+		egg.Name = "Egg" .. slot
+		egg.Value = kind
+		egg:SetAttribute("HatchAt", os.time() + seconds)
+		egg:SetAttribute("Seconds", seconds)
+		egg.Parent = incubator
+		used[egg.Name] = true
+		n += 1
 	end
 end
 local function watchEggs(player)
@@ -182,7 +244,7 @@ local function watchEggs(player)
 		queued = true
 		task.defer(function()
 			queued = false
-			if player.Parent then syncEggs(player) end
+			if player.Parent then fillPen(player); syncEggs(player) end
 		end)
 	end
 	local function hook(count)
@@ -192,6 +254,10 @@ local function watchEggs(player)
 	for _, count in ipairs(inventory:GetChildren()) do hook(count) end
 	inventory.ChildAdded:Connect(hook)
 	inventory.ChildRemoved:Connect(schedule)
+	local incubator = folder(player, INCUBATOR)
+	incubator.ChildAdded:Connect(schedule)
+	incubator.ChildRemoved:Connect(schedule)
+	fillPen(player)
 	syncEggs(player)
 end
 
@@ -263,24 +329,10 @@ local function applySlowMode(player)
 	end
 end
 
-----------------------------------------------------------------------------
--- BUTTONS IN SPACEGUI   (sendAction(action, value) on the client)
-----------------------------------------------------------------------------
-local actions = {}
-
-function actions.HatchEgg(player, kind)
-	if type(kind) ~= "string" then return end
-	local count = folder(player, "EggInventory"):FindFirstChild(kind)
-	if not count or not count:IsA("IntValue") or count.Value < 1 then
-		return notice(player, "You don't have that egg any more.")
-	end
-	local now = os.clock()
-	if lastHatch[player] and now - lastHatch[player] < HATCH_COOLDOWN then return end
+-- Hatches one egg: picks the pet, adds it, and shows the player the reveal
+local function hatchPet(player, kind)
 	if #Config.Pets == 0 then return end
-	lastHatch[player] = now
 	local pet = rollPet(player)
-	count.Value -= 1
-	if count.Value <= 0 then count:Destroy() end
 	local owned = addPet(player, pet)
 	remote:FireClient(player, "Hatched", pet.Id)
 	local entry = dataFolder(player, "Pets"):FindFirstChild(pet.Id)
@@ -288,7 +340,7 @@ function actions.HatchEgg(player, kind)
 	if entry and entry:GetAttribute("Equipped") then -- it's in the pen: say what it earns there
 		local earns = perSecond(entryIncome(player, entry))
 		message = owned > 1 and ("Another %s! Your %d make %s."):format(pet.Name, owned, earns)
-			or ("%s moved into your pen! +%s"):format(pet.Name, earns)
+			or ("%s hatched from your %s! +%s"):format(pet.Name, kind, earns)
 	elseif owned > 1 then
 		message = ("Another %s! It now has %d Power."):format(pet.Name, powerOf(pet.Id) * owned)
 	else
@@ -300,6 +352,47 @@ function actions.HatchEgg(player, kind)
 		message = (message and message .. " " or "") .. ("You also found a %s boost!"):format(BOOSTS[key].Name)
 	end
 	if message then task.delay(3, function() if player.Parent then notice(player, message) end end) end
+end
+
+-- Hatches the pen eggs whose time is up (or all of them with `now`), soonest first, then refills
+-- the pen from the waiting eggs. Returns how many hatched.
+local function hatchReady(player, now)
+	local due = {}
+	for _, egg in ipairs(folder(player, INCUBATOR):GetChildren()) do
+		local hatchAt = egg:GetAttribute("HatchAt")
+		if now or type(hatchAt) ~= "number" or hatchAt <= os.time() then table.insert(due, egg) end
+	end
+	if #due == 0 then return 0 end
+	table.sort(due, function(a, b) return (a:GetAttribute("HatchAt") or 0) < (b:GetAttribute("HatchAt") or 0) end)
+	for _, egg in ipairs(due) do
+		local kind = egg.Value
+		egg:Destroy()
+		hatchPet(player, kind)
+	end
+	fillPen(player)
+	syncEggs(player)
+	return #due
+end
+
+local instantHatch = Instance.new("BindableFunction")
+instantHatch.Name = "InstantHatch"
+instantHatch.OnInvoke = function(player)
+	if not ready[player] then return 0 end
+	return hatchReady(player, true)
+end
+instantHatch.Parent = ServerStorage
+
+----------------------------------------------------------------------------
+-- BUTTONS IN SPACEGUI   (sendAction(action, value) on the client)
+----------------------------------------------------------------------------
+local actions = {}
+
+-- Old saves and the Eggs page may still ask to hatch a waiting egg: it goes into the pen instead
+function actions.HatchEgg(player)
+	fillPen(player)
+	if #folder(player, INCUBATOR):GetChildren() >= PEN_EGGS then
+		notice(player, ("Your pen is full: %d eggs are hatching. The next one moves in when one hatches."):format(PEN_EGGS))
+	end
 end
 
 function actions.TogglePet(player, id)
@@ -398,7 +491,7 @@ local function grant(player, item)
 	local reward = PRODUCT_REWARDS[item.Key]
 	if reward.Eggs then
 		addEggs(player, SHOP_EGG, reward.Eggs)
-		notice(player, ("Thanks! %d %s%s added to your eggs."):format(reward.Eggs, SHOP_EGG, reward.Eggs == 1 and "" or "s"))
+		notice(player, ("Thanks! %d %s%s are on their way to your pen."):format(reward.Eggs, SHOP_EGG, reward.Eggs == 1 and "" or "s"))
 	end
 	if reward.Coins then
 		player:SetAttribute("Coins", (player:GetAttribute("Coins") or 0) + reward.Coins)
@@ -461,6 +554,7 @@ local function setUp(player)
 	if ready[player] or not player.Parent then return end
 	for _, category in ipairs({"Eggs", "Pets", "Boosts"}) do dataFolder(player, category) end
 	folder(player, "PurchaseHistory")
+	folder(player, INCUBATOR)
 	ready[player] = true
 	watchEggs(player)
 	refresh(player)
@@ -485,15 +579,16 @@ for _, player in ipairs(Players:GetPlayers()) do task.spawn(onPlayerAdded, playe
 Players.PlayerRemoving:Connect(function(player)
 	ready[player] = nil
 	lastAction[player] = nil
-	lastHatch[player] = nil
 end)
 
--- Every second: boosts run out on their own, then the pets in each pen pay their owner. refresh runs
--- first so a boost that just ran out stops doubling the pay straight away.
+-- Every second: eggs whose time is up hatch, boosts run out on their own, then the pets in each pen
+-- pay their owner. refresh runs first so a boost that just ran out stops doubling the pay straight away.
 task.spawn(function()
 	while true do
 		task.wait(1)
 		for player in pairs(ready) do
+			local ok, err = pcall(hatchReady, player)
+			if not ok then warn("PetsAndShop: hatching failed for " .. player.Name .. ": " .. tostring(err)) end
 			refresh(player)
 			local income = player:GetAttribute("PetIncome")
 			if type(income) == "number" and income > 0 then
