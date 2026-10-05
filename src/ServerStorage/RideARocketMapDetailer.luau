@@ -26,7 +26,7 @@ local BY_NAME = {
 	Walkway = Mat.DiamondPlate, WalkwayEdge = Mat.Metal, EntryPath = Mat.DiamondPlate,
 	Plaza = Mat.Pavement, PlazaCenter = Mat.DiamondPlate, PlazaCenterRing = Mat.Metal, PlazaRim = Mat.Metal,
 	RocketPedestal = Mat.Metal, Rocket_Body = Mat.Metal, Rocket_Nose = Mat.Metal, Rocket_Fins = Mat.Metal,
-	Rocket_Nozzle = Mat.CorrodedMetal, Rocket_WindowRing = Mat.Metal,
+	Rocket_Nozzle = Mat.Metal, Rocket_WindowRing = Mat.Metal,
 	Border_Wall = Mat.Metal, Border_Frame = Mat.Metal, Border_Pillar = Mat.Metal, Border_Plinth = Mat.Concrete,
 	Border_Glass = Mat.Glass, Post = Mat.Metal, Rail = Mat.Metal,
 	Pod_Base = Mat.Metal, Pod_Arch = Mat.Metal, Pod_Cushion = Mat.Fabric,

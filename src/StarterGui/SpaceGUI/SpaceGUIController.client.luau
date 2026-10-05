@@ -1171,6 +1171,14 @@ emptyState = function(kind, heading, description)
     twinkle(box, bodyWidth - 140, 320, 14)
 end
 
+-- Coins a second that one copy of a pet earns, with the player's x2 boost/pass included
+local function petIncome(p, count)
+    return math.floor((p.Income or 0) * (count or 1) * (player:GetAttribute("IncomeMultiplier") or 1) + 0.5)
+end
+local function perSecondText(coins)
+    return "+" .. formatNumber(coins) .. (coins == 1 and " coin/s" or " coins/s")
+end
+
 local function makeInventory(category)
     section(category:upper(), 1)
     local folder = dataFolder(category)
@@ -1213,9 +1221,15 @@ local function makeInventory(category)
         end
         local nameW = bodyWidth - (narrow and 300 or 320)
         label(f, "Name", name, 132, 12, nameW, 50, narrow and 26 or 30, C.White)
-        local detail = category == "Pets" and ("Power: " .. tostring(entry:GetAttribute("Power") or 0))
-            or ("Count: " .. tostring(entry:GetAttribute("Count") or 1))
-        label(f, "Details", detail, 132, 64, nameW, 36, 23, C.Muted)
+        local count = entry:GetAttribute("Count") or 1
+        if category == "Pets" and p then
+            -- What these pets earn a second (all copies, with x2 boosts) instead of their Power
+            local income = label(f, "Details", perSecondText(petIncome(p, count))
+                .. (count > 1 and ("  (x" .. count .. ")") or ""), 132, 64, nameW, 36, 23, C.White)
+            goldText(income)
+        else
+            label(f, "Details", "Count: " .. tostring(count), 132, 64, nameW, 36, 23, C.Muted)
+        end
         local action = category == "Pets" and "TogglePet" or category == "Eggs" and "HatchEgg" or "UseBoost"
         local text = category == "Pets" and (entry:GetAttribute("Equipped") and "Unequip" or "Equip")
             or category == "Eggs" and "Hatch" or "Use"
@@ -1225,91 +1239,159 @@ local function makeInventory(category)
 end
 
 ----------------------------------------------------------------------------
--- HATCH REVEAL: egg shakes, flashes, then the pet bursts out with light rays.
+-- HATCH REVEAL: the egg wobbles and bursts, then the pet's card pops up with its
+-- spinning 3D model, name, rarity and coins/s. It stays until the player clicks or
+-- taps anywhere. Several hatches in a row are shown one after another.
 -- Trigger from your server: remote:FireClient(player, "Hatched", petId)
 ----------------------------------------------------------------------------
-local hatchBusy = false
-local function showHatch(petId)
+local hatchQueue, hatchBusy = {}, false
+local function playHatch(petId)
     local p = petById[petId]
-    if not p or hatchBusy then return end
-    hatchBusy = true
+    if not p then return end
     local col = RarityColor[p.Rarity] or C.Cyan
+    local special = p.Rarity == "Legendary" or p.Rarity == "Mythic"
+    local CY = 0.47 -- the reveal's vertical centre, as a fraction of the screen
     local overlay = new("TextButton", stage, {Name = "Hatch", Text = "", AutoButtonColor = false,
         BackgroundColor3 = C.Ink, BackgroundTransparency = 1, BorderSizePixel = 0,
         Size = UDim2.fromScale(1, 1), ZIndex = 40, SelectionImageObject = selectionCursor})
-    tween(overlay, 0.3, {BackgroundTransparency = 0.2})
+    tween(overlay, 0.35, {BackgroundTransparency = 0.3})
     local loops, ready, done = {}, false, false
     overlay.Activated:Connect(function() if ready then done = true end end)
+    local function centred(parent, w, h, yOffset)
+        return new("Frame", parent, {BackgroundTransparency = 1, BorderSizePixel = 0,
+            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, CY, yOffset or 0),
+            Size = UDim2.fromOffset(w, h)})
+    end
+
+    -- 1. The egg drops in, wobbles harder and harder while a glow builds behind it
+    local glow = aura(overlay, 0, 0, 260, col, 1)
+    glow.Position = UDim2.new(0.5, 0, CY, 0)
+    tween(glow, 1.3, {BackgroundTransparency = 0.6, Size = UDim2.fromOffset(420, 420)}, Enum.EasingStyle.Sine)
+    local eggHolder = centred(overlay, 260, 300)
+    local eggScale = new("UIScale", eggHolder, {Scale = 0.2})
+    Models.EggView(eggHolder, 1, {Aspect = 260 / 300, Yaw = 0.3})
+    tween(eggScale, 0.4, {Scale = 1}, Enum.EasingStyle.Back)
+    task.wait(0.45)
+    for i = 1, 10 do
+        tween(eggHolder, 0.08, {Rotation = (i % 2 == 0 and 1 or -1) * (2 + i * 1.6)}, Enum.EasingStyle.Sine)
+        task.wait(0.09 - i * 0.003)
+    end
+    -- 2. Pop! The egg swells and vanishes into an expanding ring of light
+    tween(eggHolder, 0.12, {Rotation = 0})
+    tween(eggScale, 0.15, {Scale = 1.35}, Enum.EasingStyle.Quad)
+    task.wait(0.15)
+    eggHolder:Destroy()
+    playSound("Hatch")
+    for i, d in ipairs({0, 0.12}) do
+        local ring = aura(overlay, 0, 0, 120, col, 1)
+        ring.Position = UDim2.new(0.5, 0, CY, 0)
+        local s = stroke(ring, i == 1 and C.White or col, 10, 0)
+        task.delay(d, function()
+            tween(ring, 0.7, {Size = UDim2.fromOffset(900, 900)}, Enum.EasingStyle.Quad)
+            tween(s, 0.7, {Transparency = 1, Thickness = 2})
+            task.delay(0.75, function() ring:Destroy() end)
+        end)
+    end
+    tween(glow, 0.25, {BackgroundTransparency = 0.45, Size = UDim2.fromOffset(560, 560)}, Enum.EasingStyle.Back)
+
+    -- 3. Slowly turning light rays and twinkles behind the card
+    local rays = centred(overlay, 900, 900)
+    local raysScale = new("UIScale", rays, {Scale = 0.3})
+    for i = 0, 5 do
+        local ray = new("Frame", rays, {BackgroundColor3 = col, BorderSizePixel = 0,
+            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+            Size = UDim2.fromOffset(56, 900), Rotation = i * 30})
+        new("UIGradient", ray, {Rotation = 90, Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, special and 0.3 or 0.5),
+            NumberSequenceKeypoint.new(1, 1)})})
+    end
+    tween(raysScale, 0.5, {Scale = 1}, Enum.EasingStyle.Back)
+    table.insert(loops, spin(rays, 20, true))
+    table.insert(loops, loop(glow, 1.4, {BackgroundTransparency = 0.65}, true))
+    for _ = 1, special and 16 or 10 do
+        twinkle(overlay, math.random(300, 1200), math.random(80, 770), math.random(10, 22), true, loops)
+    end
+
+    -- 4. The pet's card springs up
+    local CW, CH = 440, 560
+    local card = centred(overlay, CW, CH)
+    local cardScale = new("UIScale", card, {Scale = 0.4})
+    card.Rotation = -8
+    local body = panel(card, "Card", 0, 0, CW, CH, Color3.fromRGB(44, 58, 150), C.Deep, col, 26)
+    aura(body, CW / 2, 230, 300, col, 0.8)
+
+    local ribbon = panel(card, "Rarity", CW / 2 - 110, -24, 220, 50, col, col:Lerp(C.Ink, 0.35), C.White, 25)
+    label(ribbon, "Text", p.Rarity:upper(), 0, 0, 220, 50, 28, C.White, CENTER)
+
+    local petHolder = new("Frame", card, {BackgroundTransparency = 1, BorderSizePixel = 0,
+        Position = UDim2.fromOffset(40, 40), Size = UDim2.fromOffset(CW - 80, CW - 80)})
+    local _, petCtl = Models.PetView(petHolder, p.Id, {Aspect = 1, Bob = 0.04})
+    petCtl.Spin(true, "spin")
+
+    local name = label(card, "Name", p.Name, 10, 392, CW - 20, 64, 54, C.White, CENTER)
+    goldText(name)
+    local odds = label(card, "Odds", tostring(p.Odds) .. "% chance", 10, 452, CW - 20, 30, 22, C.Muted, CENTER)
+    odds.TextTransparency = 0.1
+
+    local pill = panel(card, "Income", CW / 2 - 130, 488, 260, 52, C.Gold, C.GoldDeep, Color3.fromRGB(255, 248, 170), 26)
+    icon("Coins", pill, 10, 6, 40)
+    label(pill, "Text", perSecondText(petIncome(p)), 52, 0, 200, 52, 28, C.White, CENTER)
+
+    local entry = dataFolder("Pets") and dataFolder("Pets"):FindFirstChild(p.Id)
+    if not entry or (entry:GetAttribute("Count") or 1) <= 1 then
+        local tag = panel(card, "New", CW - 96, 18, 92, 44, C.Red, Color3.fromRGB(170, 30, 60), C.White, 22)
+        tag.Rotation = 12
+        label(tag, "Text", "NEW!", 0, 0, 92, 44, 26, C.White, CENTER)
+        table.insert(loops, loop(tag, 0.5, {Rotation = 4}, true))
+    end
+
+    tween(cardScale, 0.55, {Scale = 1}, Enum.EasingStyle.Back)
+    tween(card, 0.55, {Rotation = 0}, Enum.EasingStyle.Back)
+    task.delay(0.6, function()
+        if card.Parent then table.insert(loops, loop(card, 1.6, {Position = UDim2.new(0.5, 0, CY, -8)}, true)) end
+    end)
+
+    local prompt = label(overlay, "Prompt", inputMode == "Gamepad" and "Press A to continue"
+        or (inputMode == "Touch" and "Tap anywhere to continue" or "Click anywhere to continue"),
+        0, 0, 700, 34, 24, C.White, CENTER)
+    prompt.AnchorPoint = Vector2.new(0.5, 0)
+    prompt.Position = UDim2.new(0.5, 0, CY, CH / 2 + 26)
+    prompt.TextTransparency = 1
+    task.wait(0.6)
+    tween(prompt, 0.3, {TextTransparency = 0})
+    task.delay(0.3, function()
+        if prompt.Parent then table.insert(loops, loop(prompt, 0.9, {TextTransparency = 0.55}, true)) end
+    end)
+    ready = true
+    if inputMode == "Gamepad" then GuiService.SelectedObject = overlay end
+    while overlay.Parent and not done do task.wait(0.05) end
+
+    -- 5. Clicked: the card shrinks away and the screen clears
+    for _, t in ipairs(loops) do t:Cancel() end
+    if GuiService.SelectedObject == overlay then GuiService.SelectedObject = nil end
+    tween(cardScale, 0.25, {Scale = 0}, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+    tween(raysScale, 0.25, {Scale = 0}, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+    tween(glow, 0.25, {BackgroundTransparency = 1})
+    tween(prompt, 0.2, {TextTransparency = 1})
+    tween(overlay, 0.3, {BackgroundTransparency = 1})
+    task.wait(0.3)
+    petCtl.Destroy()
+    overlay:Destroy()
+end
+
+local function showHatch(petId)
+    if not petById[petId] then return end
+    table.insert(hatchQueue, petId)
+    if hatchBusy then return end
+    hatchBusy = true
     task.spawn(function()
-        local holder = new("Frame", overlay, {BackgroundTransparency = 1, BorderSizePixel = 0,
-            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, -10),
-            Size = UDim2.fromOffset(300, 340)})
-        local _, eggCtl = Models.EggView(holder, 1, {Aspect = 300 / 340, Yaw = 0.3})
-        eggCtl.Spin(true, "sway")
-        for i = 1, 8 do
-            tween(holder, 0.07, {Rotation = (i % 2 == 0 and 1 or -1) * (3 + i * 1.5)}, Enum.EasingStyle.Sine)
-            task.wait(0.1)
+        while #hatchQueue > 0 do
+            local ok, err = pcall(playHatch, table.remove(hatchQueue, 1))
+            if not ok then warn("Hatch reveal failed: " .. tostring(err)) end
         end
-        local flash = new("Frame", overlay, {BackgroundColor3 = C.White, BorderSizePixel = 0,
-            Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 5})
-        tween(flash, 0.12, {BackgroundTransparency = 0})
-        task.wait(0.14)
-        holder:Destroy()
-
-        -- light rays + glow + sparkles
-        local rays = new("Frame", overlay, {BackgroundTransparency = 1, BorderSizePixel = 0,
-            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.44, 0), Size = UDim2.fromOffset(700, 700)})
-        -- 5 full-length beams through the center = 10 rays. Each beam rotates around its
-        -- own middle (the pet) and fades out toward both tips.
-        for i = 0, 4 do
-            local ray = new("Frame", rays, {BackgroundColor3 = col, BorderSizePixel = 0,
-                AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-                Size = UDim2.fromOffset(40, 700), Rotation = i * 36})
-            new("UIGradient", ray, {Rotation = 90, Transparency = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.35),
-                NumberSequenceKeypoint.new(1, 1)})})
-        end
-        table.insert(loops, spin(rays, 16, true))
-        local glowDisc = aura(overlay, 0, 0, 380, col, 0.75)
-        glowDisc.Position = UDim2.new(0.5, 0, 0.44, 0)
-        table.insert(loops, loop(glowDisc, 1.0, {BackgroundTransparency = 0.55}, true))
-        for i = 1, 9 do
-            twinkle(overlay, math.random(60, 1400), math.random(40, 780), math.random(10, 20), true, loops)
-        end
-
-        local petHolder = new("Frame", overlay, {BackgroundTransparency = 1, BorderSizePixel = 0,
-            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.44, 0), Size = UDim2.fromOffset(340, 340)})
-        local petScale = new("UIScale", petHolder, {Scale = 0.15})
-        local _, petCtl = Models.PetView(petHolder, petId, {Aspect = 1, Bob = 0.03})
-        petCtl.Spin(true, "sway")
-        tween(petScale, 0.55, {Scale = 1}, Enum.EasingStyle.Back)
-        tween(flash, 0.6, {BackgroundTransparency = 1})
-
-        local nameLabel = label(overlay, "Name", p.Name, 0, 0, 700, 64, 58, C.White, CENTER)
-        nameLabel.AnchorPoint = Vector2.new(0.5, 0)
-        nameLabel.Position = UDim2.new(0.5, 0, 0.44, 190)
-        local rarity = label(overlay, "Rarity", p.Rarity:upper() .. "  -  " .. tostring(p.Odds) .. "%", 0, 0, 700, 40, 30, col, CENTER)
-        rarity.AnchorPoint = Vector2.new(0.5, 0)
-        rarity.Position = UDim2.new(0.5, 0, 0.44, 254)
-        local prompt = label(overlay, "Prompt", inputMode == "Gamepad" and "Press A to continue"
-            or (inputMode == "Touch" and "Tap to continue" or "Click to continue"), 0, 0, 700, 34, 22, C.Muted, CENTER)
-        prompt.AnchorPoint = Vector2.new(0.5, 0)
-        prompt.Position = UDim2.new(0.5, 0, 0.44, 306)
-        table.insert(loops, loop(prompt, 0.8, {TextTransparency = 0.6}, true))
-        task.wait(0.6)
-        ready = true
-        if inputMode == "Gamepad" then GuiService.SelectedObject = overlay end
-        while overlay.Parent and not done do task.wait(0.1) end
-
-        for _, t in ipairs(loops) do t:Cancel() end
-        tween(overlay, 0.25, {BackgroundTransparency = 1})
-        if GuiService.SelectedObject == overlay then GuiService.SelectedObject = nil end
-        task.wait(0.05)
-        overlay:Destroy()
         hatchBusy = false
     end)
 end
-
 
 ----------------------------------------------------------------------------
 -- LAYOUT + RENDER
