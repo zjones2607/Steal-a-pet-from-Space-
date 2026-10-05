@@ -1269,8 +1269,11 @@ end)
 -- A search box and a rarity filter narrow the list; only the rows change while you type.
 local RARITIES = {"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic"}
 local RARITY_RANK = {Common = 1, Uncommon = 2, Rare = 3, Epic = 4, Legendary = 5, Mythic = 6}
-local PET_ROWS = 30                    -- rows shown at first; "Show more" adds this many
-local petView = {search = "", filter = "All", shown = PET_ROWS, filterOpen = false}
+local PET_ROWS = 30                    -- list: pets shown at first; "Show more" adds this many
+local PET_TILES = 60                   -- grid: the same, for the smaller tiles
+-- layout: "List" or "Grid". status: "All", "InPen" or "NotInPen"
+local petView = {search = "", filter = "All", status = "All", layout = "List", shown = PET_ROWS, filterOpen = false}
+local function petPageSize() return petView.layout == "Grid" and PET_TILES or PET_ROWS end
 
 local function petEarns(p, entry)
     return Config.PetIncome(p, entry:GetAttribute("Size") or 1)
@@ -1332,6 +1335,41 @@ local function petRow(item, order)
         equipped and C.Purple or C.Green, function() sendAction("TogglePet", entry.Name) end, {rim = C.Cyan, textSize = 26})
 end
 
+-- One pet as a small square tile, for the grid view
+local function petTile(parent, item, x, w, h)
+    local entry, p = item.entry, item.p
+    local rarityCol = RarityColor[p.Rarity] or C.Cyan
+    local equipped = entry:GetAttribute("Equipped") == true
+    local f = panel(parent, "Pet_" .. entry.Name, x, 0, w, h, Color3.fromRGB(34, 46, 126), C.Deep,
+        equipped and C.Green or rarityCol, 12)
+    local view = w - 16
+    aura(f, w / 2, 8 + view / 2, view * 0.8, rarityCol, 0.8)
+    local vp, ctl = Models.PetView(f, entry.Value, {Position = UDim2.fromOffset(8, 8), Size = UDim2.fromOffset(view, view)})
+    local hit = hitbox(f)
+    hit.Size = UDim2.fromOffset(w, view + 8)
+    attachSpin(hit, vp, ctl)
+    if equipped then
+        local badge = panel(f, "InPen", 6, 6, 74, 26, C.Green, Color3.fromRGB(30, 150, 80), C.White, 13)
+        label(badge, "Text", "IN PEN", 0, 0, 74, 26, 15, C.White, CENTER)
+    end
+    local tag = Config.PetSizeLabel(entry:GetAttribute("Size") or 1)
+    if tag then
+        local big = panel(f, "Size", w - 70, 6, 64, 26, C.Magenta, C.Violet, C.White, 13)
+        label(big, "Text", tag, 0, 0, 64, 26, 15, C.White, CENTER)
+    end
+    local y = view + 12
+    local name = label(f, "Name", p.Name, 6, y, w - 12, 26, narrow and 17 or 20, C.White, CENTER)
+    name.TextTruncate = Enum.TextTruncate.AtEnd
+    name.TextWrapped = false
+    label(f, "Kg", kgText(item.kg), 6, y + 26, w - 12, 20, narrow and 14 or 16, rarityCol, CENTER)
+    local coins = label(f, "Earns", perSecondText(item.earns * (player:GetAttribute("IncomeMultiplier") or 1)),
+        6, y + 46, w - 12, 22, narrow and 15 or 18, C.White, CENTER)
+    goldText(coins)
+    button(f, "Action", equipped and "Unequip" or "Equip", 8, h - 46, w - 16, 40,
+        equipped and C.Purple or C.Green, function() sendAction("TogglePet", entry.Name) end,
+        {textSize = narrow and 16 or 19})
+end
+
 local buildPetRows
 local function makePets()
     makePenCard(2)
@@ -1372,20 +1410,48 @@ local function makePets()
             (i - 1) * (chipW + 6), 0, chipW, chipH, chosen and col or col:Lerp(C.Deep, 0.55), function()
                 petView.filter = option
                 petView.filterOpen = false
-                petView.shown = PET_ROWS
+                petView.shown = petPageSize()
                 render()
             end, {textSize = narrow and 14 or 17, rim = chosen and C.White or nil})
         if chosen then stroke(face, C.White, 3) end
     end
 
+    -- View (List / Grid) and which pets (all, in the pen, not in the pen)
+    local opts = frame(pages, "PetOptions", 0, 0, bodyWidth, 50)
+    opts.LayoutOrder = 5
+    local function choice(name, text, x, w, chosen, color, onPick)
+        local _, face = button(opts, name, text, x, 0, w, 46, chosen and color or color:Lerp(C.Deep, 0.6), onPick,
+            {textSize = narrow and 15 or 19, rim = chosen and C.White or nil})
+        if chosen then stroke(face, C.White, 3) end
+    end
+    local viewW = narrow and 84 or 110
+    for i, layout in ipairs({"List", "Grid"}) do
+        choice("View_" .. layout, layout, (i - 1) * (viewW + 6), viewW, petView.layout == layout, C.Blue, function()
+            if petView.layout == layout then return end
+            petView.layout = layout
+            petView.shown = petPageSize()
+            render()
+        end)
+    end
+    local statusX = 2 * viewW + 6 + 18
+    local statusW = math.floor((bodyWidth - statusX - 12) / 3)
+    for i, s in ipairs({{"All", "All pets"}, {"InPen", "In pen"}, {"NotInPen", "Not in pen"}}) do
+        choice("Status_" .. s[1], s[2], statusX + (i - 1) * (statusW + 6), statusW, petView.status == s[1],
+            s[1] == "InPen" and C.Green or s[1] == "NotInPen" and C.Red or C.Purple, function()
+                petView.status = s[1]
+                petView.shown = petPageSize()
+                render()
+            end)
+    end
+
     -- Equip Best stays
     local wrap = frame(pages, "EquipBestWrap", 0, 0, bodyWidth, 62)
-    wrap.LayoutOrder = 5
+    wrap.LayoutOrder = 6
     button(wrap, "EquipBest", "Equip Best", 0, 0, bodyWidth, 58, C.Purple,
         function() sendAction("EquipBest") end, {rim = C.Cyan, textSize = 28})
 
     local info = label(pages, "PetCount", "", 0, 0, bodyWidth, 30, 20, C.Muted, CENTER)
-    info.LayoutOrder = 6
+    info.LayoutOrder = 7
 
     buildPetRows = function()
         for _, child in ipairs(pages:GetChildren()) do
@@ -1397,23 +1463,43 @@ local function makePets()
             local okRarity = petView.filter == "All" or item.p.Rarity == petView.filter
             local okName = query == "" or item.p.Name:lower():find(query, 1, true) ~= nil
                 or item.p.Rarity:lower():find(query, 1, true) ~= nil
-            if okRarity and okName then table.insert(matches, item) end
+            local inPen = item.entry:GetAttribute("Equipped") == true
+            local okStatus = petView.status == "All" or (petView.status == "InPen") == inPen
+            if okRarity and okName and okStatus then table.insert(matches, item) end
         end
         if #all == 0 then
             info.Text = "No pets yet: collect eggs and they hatch in your pen!"
         elseif #matches == 0 then
-            info.Text = "No pets match your search"
+            info.Text = petView.status == "InPen" and "No pets in your pen match"
+                or petView.status == "NotInPen" and "No pets outside your pen match" or "No pets match your search"
         else
             info.Text = ("%d pet%s, best first"):format(#matches, #matches == 1 and "" or "s")
         end
-        for i = 1, math.min(#matches, petView.shown) do petRow(matches[i], 10 + i) end
+        local count = math.min(#matches, petView.shown)
+        if petView.layout == "Grid" then
+            local cols = narrow and 3 or 5
+            local gap = 10
+            local w = math.floor((bodyWidth - (cols - 1) * gap) / cols)
+            local h = (w - 16) + 12 + 70 + 52
+            for row = 0, math.ceil(count / cols) - 1 do
+                local line = frame(pages, "PetGridRow", 0, 0, bodyWidth, h)
+                line.LayoutOrder = 10 + row
+                line:SetAttribute("PetRow", true)
+                for col = 1, cols do
+                    local item = matches[row * cols + col]
+                    if item and row * cols + col <= count then petTile(line, item, (col - 1) * (w + gap), w, h) end
+                end
+            end
+        else
+            for i = 1, count do petRow(matches[i], 10 + i) end
+        end
         if #matches > petView.shown then
             local more = frame(pages, "ShowMore", 0, 0, bodyWidth, 62)
             more.LayoutOrder = 100000
             more:SetAttribute("PetRow", true)
             button(more, "Button", ("Show more (%d left)"):format(#matches - petView.shown), 0, 0, bodyWidth, 58, C.Blue,
                 function()
-                    petView.shown += PET_ROWS
+                    petView.shown += petPageSize()
                     buildPetRows()
                 end, {rim = C.Cyan, textSize = 24})
         end
@@ -1423,7 +1509,7 @@ local function makePets()
     local pending = 0
     box:GetPropertyChangedSignal("Text"):Connect(function()
         petView.search = box.Text
-        petView.shown = PET_ROWS
+        petView.shown = petPageSize()
         clearBtn.Visible = box.Text ~= ""
         pending += 1
         local mine = pending
