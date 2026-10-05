@@ -1265,6 +1265,10 @@ task.spawn(function()
     end
 end)
 
+-- The Pets page's helpers live inside this do-block: the script is at Luau's limit of 200 local
+-- variables at the top level (Studio refuses to run it past that), so only these two are shared.
+local makePets, kgText
+do
 -- PETS PAGE: every pet on its own row, best first, with its weight and coins a second.
 -- A search box and a rarity filter narrow the list; only the rows change while you type.
 local RARITIES = {"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic"}
@@ -1278,7 +1282,7 @@ local function petPageSize() return petView.layout == "Grid" and PET_TILES or PE
 local function petEarns(p, entry)
     return Config.PetIncome(p, entry:GetAttribute("Size") or 1)
 end
-local function kgText(kg)
+function kgText(kg)
     kg = tonumber(kg) or 0
     if kg >= 1000 then return formatNumber(kg) .. " kg" end
     return (("%.1f"):format(kg):gsub("%.0$", "")) .. " kg"
@@ -1371,7 +1375,7 @@ local function petTile(parent, item, x, w, h)
 end
 
 local buildPetRows
-local function makePets()
+function makePets()
     makePenCard(2)
     local all = sortedPets()
 
@@ -1518,6 +1522,7 @@ local function makePets()
         end)
     end)
     clearBtn.Activated:Connect(function() box.Text = "" end)
+end
 end
 
 local function makeInventory(category)

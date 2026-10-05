@@ -109,6 +109,7 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
   - Lune can't raycast, so wrap Studio-only calls in `pcall`.
 - **Testing server scripts**: run them in Lune with fake services, such as a fake DataStore that round-trips through JSON. Call `process.exit()` at the end, because background loops keep Lune alive.
 - **Before every push**, run `rojo build -o /tmp/check.rbxlx`.
+- **Compile every script with `luau.compile(src, {optimizationLevel = 0})`** as well. Studio refuses a script with more than 200 local variables in one scope, but higher optimisation levels hide that error. `SpaceGUIController` is right at the limit, so put new top-level helpers inside a `do ... end` block (like the Pets page's) or in a table.
 
 ## Git workflow
 
