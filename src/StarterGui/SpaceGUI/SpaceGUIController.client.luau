@@ -1786,8 +1786,22 @@ resize = function()
 end
 root:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() resize() end)
 if JetpackConfig then
+    -- Buying fires several changes at once (coins, owned, equipped): rebuild once, and stay scrolled
+    -- where you were instead of jumping back to the top
+    local queued = false
     local function refreshJetpacks()
-        if windowOpen and currentPage == "Jetpacks" then render() end
+        if queued then return end
+        queued = true
+        task.defer(function()
+            queued = false
+            if windowOpen and currentPage == "Jetpacks" then
+                local scroll = pages.CanvasPosition
+                render()
+                pages.CanvasPosition = scroll
+                RunService.Heartbeat:Wait() -- the canvas grows to fit the new rows a frame later
+                pages.CanvasPosition = scroll
+            end
+        end)
     end
     -- Coins only change the page through which Buy buttons are lit, so it's rebuilt only when that
     -- changes: pets pay coins every second, and a rebuild every second would flicker the page,
@@ -2071,7 +2085,9 @@ local function scheduleInventoryRefresh()
         if windowOpen and currentPage ~= "Shop" then
             local scroll = pages.CanvasPosition -- stay where you were, e.g. after pressing Equip
             render()
-            task.defer(function() pages.CanvasPosition = scroll end)
+            pages.CanvasPosition = scroll
+            RunService.Heartbeat:Wait() -- the canvas grows to fit the new rows a frame later
+            pages.CanvasPosition = scroll
         end
     end)
 end

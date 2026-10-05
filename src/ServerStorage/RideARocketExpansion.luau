@@ -12,6 +12,9 @@
 -- Decorations from RideARocketMapDetailer that stand inside a pen are moved (not deleted) to
 -- ServerStorage.RemovedMapBackups.Decor_InPetPens. If you re-run the detailer, run
 -- Apply({force = true}) afterwards to clear its new ones out of the pens.
+-- Rocks, trees and other decorations standing on a walkway are slid sideways off it. That step also
+-- runs on its own, without touching anything else:
+--   require(game.ServerStorage.RideARocketExpansion).ClearPaths()
 local VERSION = 4
 local function rgb(r,g,b) return Color3.fromRGB(r,g,b) end
 local SP, NEON, GRASS = Enum.Material.SmoothPlastic, Enum.Material.Neon, Enum.Material.Grass
@@ -226,6 +229,82 @@ local function moveDetailOutOfPens(station, penBoxes)
 	return moved
 end
 
+-- Decorations standing on a walkway (or a station's entry path) are slid sideways just off it.
+-- Only loose decor counts: the base's scattered decor and the detailer's "Detail" items on the planet
+-- top, never the walkways' own trim, the plaza, the stations or the pens.
+local PATH_MARGIN = 1.5      -- studs kept clear beside a path
+local MAX_DECOR_RADIUS = 25  -- bigger things than this aren't loose decor
+local function footprint(item)
+	local c = centre(item)
+	if not c then return nil end
+	local r = 0
+	for _, p in ipairs(parts(item)) do
+		r = math.max(r, flat(p.CFrame.Position - c).Magnitude + math.max(p.Size.X, p.Size.Z) / 2)
+	end
+	return c, r
+end
+local function clearPaths(station)
+	local paths = {}
+	for _, p in ipairs(station.Walkways:GetChildren()) do
+		if p:IsA("BasePart") and p.Name == "Walkway" then table.insert(paths, p) end
+	end
+	for _, d in ipairs(station:GetDescendants()) do
+		if d:IsA("BasePart") and d.Name == "EntryPath" then table.insert(paths, d) end
+	end
+	local skip = {station.Walkways, station.SpawnHub}
+	local function loose(item)
+		for _, s in ipairs(skip) do if item:IsDescendantOf(s) then return false end end
+		local plot = item:FindFirstAncestorWhichIsA("Model")
+		while plot and plot ~= station do
+			if plot.Name:match("^StationPlot%d+$") then return false end
+			plot = plot.Parent
+		end
+		return true
+	end
+	local items = {}
+	for _, d in ipairs(station.BaseDecor:GetChildren()) do table.insert(items, d) end
+	for _, folder in ipairs(station:GetDescendants()) do
+		if folder:IsA("Folder") and folder.Name == "Detail" and loose(folder) then
+			for _, d in ipairs(folder:GetChildren()) do table.insert(items, d) end
+		end
+	end
+	local moved = 0
+	for _, item in ipairs(items) do
+		local c, r = footprint(item)
+		if not c or r > MAX_DECOR_RADIUS or c.Y < O.Y + Y0 - 4 or c.Y > O.Y + Y0 + 60 then continue end
+		local shifted = false
+		for _ = 1, 4 do -- moving off one path could put it on another (where paths meet)
+			local hit = false
+			for _, path in ipairs(paths) do
+				local l = path.CFrame:PointToObjectSpace(Vector3.new(c.X, path.CFrame.Position.Y, c.Z))
+				local clear = path.Size.X / 2 + r + PATH_MARGIN
+				if math.abs(l.X) < clear and math.abs(l.Z) < path.Size.Z / 2 + r then
+					local side = l.X >= 0 and 1 or -1
+					local offset = flat(path.CFrame.RightVector).Unit * side * (clear - math.abs(l.X))
+					shift(item, offset)
+					c = c + offset
+					hit, shifted = true, true
+				end
+			end
+			if not hit then break end
+		end
+		if shifted then moved += 1 end
+	end
+	return moved
+end
+function M.ClearPaths()
+	local station = workspace.JetpackPetRescueMap.SpaceStation
+	O = station.SpawnHub.PlazaRim.CFrame.Position - Vector3.new(0, Y0, 0)
+	local recording
+	pcall(function() recording = game:GetService("ChangeHistoryService"):TryBeginRecording("Clear walkways") end)
+	local moved = clearPaths(station)
+	if recording then
+		pcall(function() game:GetService("ChangeHistoryService"):FinishRecording(recording, Enum.FinishRecordingOperation.Commit) end)
+	end
+	print(("RideARocketExpansion: moved %d decorations off the walkways"):format(moved))
+	return moved
+end
+
 function M.Apply(opts)
 	opts = opts or {}
 	local station = workspace.JetpackPetRescueMap.SpaceStation
@@ -259,12 +338,13 @@ function M.Apply(opts)
 	end
 	clearDecor(station, hubR, boxes)
 	local moved = moveDetailOutOfPens(station, boxes)
+	local offPaths = clearPaths(station)
 	station:SetAttribute("ExpansionVersion", VERSION)
 
 	if recording then
 		pcall(function() game:GetService("ChangeHistoryService"):FinishRecording(recording, Enum.FinishRecordingOperation.Commit) end)
 	end
-	print(("RideARocketExpansion: base at (%.0f, %.0f, %.0f), plaza radius %d, wall at %d, %d pet pens (%d studs deep), %d decorations moved out of the pens")
-		:format(O.X, O.Y, O.Z, hubR, apothem, #boxes, outer - inner, moved))
+	print(("RideARocketExpansion: base at (%.0f, %.0f, %.0f), plaza radius %d, wall at %d, %d pet pens (%d studs deep), %d decorations moved out of the pens, %d off the walkways")
+		:format(O.X, O.Y, O.Z, hubR, apothem, #boxes, outer - inner, moved, offPaths))
 end
 return M
