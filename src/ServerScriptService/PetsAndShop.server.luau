@@ -10,15 +10,15 @@
 --     so the odds the shop shows are the real ones. StarterPlayerScripts.PenEggs shows the eggs.
 --     ServerStorage.InstantHatch (a BindableFunction, used by the admin panel) hatches a player's
 --     pen eggs straight away.
---   Pets: one entry per kind of pet. Hatching one you already have adds to its Count, and its Power
---     grows with it. Up to MAX_EQUIPPED kinds can be equipped. Every copy of an equipped pet roams
---     the pen behind your station (StarterPlayerScripts.PetPens builds them from PenPets) and earns
---     its Income from SpaceGUIConfig.Pets in coins every second. Equipped pets also still multiply
---     the coins you pick up by 1 + their Power/100.
+--   Pets: one entry per pet (a StringValue called Pet1, Pet2... with the kind's id in Value). Every
+--     hatched pet gets its own size (SpaceGUIConfig.PetSizes): Size, and Kg = BaseKg x Size, are
+--     attributes on its entry, and it earns Config.PetIncome(kind, Size) coins a second while it's in
+--     the pen. Old saves (one entry per kind with a Count) are split into single pets of size 1.
 --   Pen: holds Config.PenCapacity(PenLevel) pets (10 to start, +1 per upgrade bought on the Pets
---     page with UpgradePen). When more copies are equipped than fit, the best earners get the spots,
---     and only the pets in the pen roam and earn. PenPetCount / PenCapacity feed the pen's sign
---     (PenSigns) and SpaceGUI's pen card.
+--     page with UpgradePen). Any mix of pets can be equipped, up to that many, and every equipped
+--     pet roams the pen behind your station (StarterPlayerScripts.PetPens builds them from PenPets)
+--     and earns. The 3 strongest equipped pets also multiply the coins you pick up by
+--     1 + their Power/100. PenPetCount / PenCapacity feed the pen's sign (PenSigns) and SpaceGUI.
 --   Boosts: a hatch sometimes drops one. Using it starts a timer, saved as a unix time in
 --     <Boost>EndsAt, so it keeps running while the player is offline. x2 Coins doubles both pet
 --     income and picked-up coins, and so does the x2 Credits pass.
@@ -35,7 +35,8 @@ local MarketplaceService = game:GetService("MarketplaceService")
 local Config = require(StarterGui:WaitForChild("SpaceGUI"):WaitForChild("SpaceGUIConfig"))
 local saveNow = ServerStorage:WaitForChild("SavePlayerNow")
 
-local MAX_EQUIPPED = 3
+local MAX_MIGRATED = 1000        -- copies of one kind an old save is split into, at most
+local POWER_PETS = 3              -- how many of the strongest equipped pets boost coin pickups
 local ACTION_COOLDOWN = 0.2       -- seconds between any two requests from one player
 local BOOST_DROP_CHANCE = 0.15    -- chance that a hatch also gives a random boost
 local SHOP_EGG = "Galaxy Egg"     -- the egg that Robux egg packs give
@@ -90,11 +91,24 @@ local function petInfo(id)
 	end
 end
 local function powerOf(id) return PET_POWER[id] or DEFAULT_POWER end
--- Coins per second that one copy of a pet earns in the pen. A pet that isn't in SpaceGUIConfig earns nothing.
-local function incomeOf(id)
-	local info = petInfo(id)
-	return info and type(info.Income) == "number" and info.Income or 0
+-- Coins a second one pet earns before boosts: its kind's Income times its size
+local function petIncome(entry)
+	local info = petInfo(entry.Value)
+	return info and Config.PetIncome(info, entry:GetAttribute("Size") or 1) or 0
 end
+local RARITY_RANK = {Common = 1, Uncommon = 2, Rare = 3, Epic = 4, Legendary = 5, Mythic = 6}
+-- Best pets first: most coins a second, then rarest, then heaviest
+local function betterPet(a, b)
+	local incomeA, incomeB = petIncome(a), petIncome(b)
+	if incomeA ~= incomeB then return incomeA > incomeB end
+	local infoA, infoB = petInfo(a.Value), petInfo(b.Value)
+	local rankA, rankB = infoA and RARITY_RANK[infoA.Rarity] or 0, infoB and RARITY_RANK[infoB.Rarity] or 0
+	if rankA ~= rankB then return rankA > rankB end
+	local kgA, kgB = a:GetAttribute("Kg") or 0, b:GetAttribute("Kg") or 0
+	if kgA ~= kgB then return kgA > kgB end
+	return a.Name < b.Name
+end
+local function penCapacity(player) return Config.PenCapacity(player:GetAttribute("PenLevel") or 0) end
 local function boostActive(player, key)
 	local endsAt = player:GetAttribute(BOOSTS[key].Attribute)
 	return type(endsAt) == "number" and endsAt > os.time()
@@ -106,42 +120,36 @@ end
 local function perSecond(coins) return ("%s coin%s/s"):format(tostring(coins), coins == 1 and "" or "s") end
 
 -- Works out everything that depends on equipped pets, boosts and passes:
---   EquippedPets      ids of the equipped pets, comma separated
---   PenPets           the same pets with how many copies of each, as "id:count" pairs sorted by id
---                     (like "astro_dog:3,comet_fox:1"). PetPens puts that many of each in the pen.
---   PetPower          their total Power
+--   EquippedPets      ids of the kinds in the pen, comma separated
+--   PenPets           every pet in the pen, best first, as "Pet12:astro_dog:1.25:3" (entry name, kind,
+--                     size, coins a second before boosts), comma separated. PetPens builds these.
+--   PetPower          the total Power of the POWER_PETS strongest pets in the pen
 --   CoinMultiplier    what CoinPickups multiplies each coin by
 --   IncomeMultiplier  what pet income is multiplied by: x2 for the x2 Coins boost, x2 for the x2 Credits pass
 --   PetIncome         coins per second the pen earns, which the loop at the bottom pays out
 --   PenCapacity       how many pets fit in the pen, from the PenLevel upgrades
---   PenPetCount       how many pets are in it (equipped copies, up to PenCapacity)
+--   PenPetCount       how many pets are in it
 local function refresh(player)
 	if not ready[player] then return end
-	local equipped, power = {}, 0
+	local equipped = {}
 	for _, entry in ipairs(dataFolder(player, "Pets"):GetChildren()) do
-		if entry:IsA("StringValue") and entry:GetAttribute("Equipped") then
-			table.insert(equipped, {id = entry.Value, count = entry:GetAttribute("Count") or 1})
-			power += entry:GetAttribute("Power") or 0
-		end
+		if entry:IsA("StringValue") and entry:GetAttribute("Equipped") then table.insert(equipped, entry) end
 	end
-	-- The pen fills up with the best earners first
-	table.sort(equipped, function(a, b)
-		local incomeA, incomeB = incomeOf(a.id), incomeOf(b.id)
-		if incomeA ~= incomeB then return incomeA > incomeB end
-		return a.id < b.id
-	end)
-	local capacity = Config.PenCapacity(player:GetAttribute("PenLevel") or 0)
-	local ids, counts, income, inPen = {}, {}, 0, 0
-	for _, e in ipairs(equipped) do
-		local fits = math.min(e.count, capacity - inPen)
-		if fits > 0 then
-			if not counts[e.id] then table.insert(ids, e.id) end
-			counts[e.id] = (counts[e.id] or 0) + fits
-			income += fits * incomeOf(e.id)
-			inPen += fits
-		end
+	table.sort(equipped, betterPet)
+	local capacity = penCapacity(player)
+	local pen, kinds, seen, powers, income = {}, {}, {}, {}, 0
+	for i, entry in ipairs(equipped) do
+		if i > capacity then break end -- only happens if something equipped too many
+		local earns = petIncome(entry)
+		income += earns
+		table.insert(pen, ("%s:%s:%.2f:%d"):format(entry.Name, entry.Value, entry:GetAttribute("Size") or 1, earns))
+		table.insert(powers, entry:GetAttribute("Power") or powerOf(entry.Value))
+		if not seen[entry.Value] then seen[entry.Value] = true; table.insert(kinds, entry.Value) end
 	end
-	table.sort(ids)
+	table.sort(kinds)
+	table.sort(powers, function(a, b) return a > b end)
+	local power = 0
+	for i = 1, math.min(POWER_PETS, #powers) do power += powers[i] end
 	for _, key in ipairs(BOOST_KEYS) do
 		local attribute = BOOSTS[key].Attribute
 		if player:GetAttribute(attribute) ~= nil and not boostActive(player, key) then
@@ -153,23 +161,19 @@ local function refresh(player)
 	if boostActive(player, "CoinBoost") then boost *= 2 end
 	if player:GetAttribute("Pass_Credits2x") then boost *= 2 end
 	local multiplier = math.floor((1 + power / 100) * boost * 100 + 0.5) / 100
-	income = math.floor(income * boost + 0.5) -- whole coins (it already is while every Income is whole)
-	local pen = {}
-	for i, id in ipairs(ids) do pen[i] = id .. ":" .. tostring(counts[id]) end
-	setAttribute(player, "EquippedPets", table.concat(ids, ","))
+	setAttribute(player, "EquippedPets", table.concat(kinds, ","))
 	setAttribute(player, "PenPets", table.concat(pen, ","))
 	setAttribute(player, "PetPower", power)
 	setAttribute(player, "CoinMultiplier", multiplier)
 	setAttribute(player, "IncomeMultiplier", boost)
-	setAttribute(player, "PetIncome", income)
+	setAttribute(player, "PetIncome", math.floor(income * boost + 0.5))
 	setAttribute(player, "PenCapacity", capacity)
-	setAttribute(player, "PenPetCount", inPen)
+	setAttribute(player, "PenPetCount", #pen)
 end
 
--- Coins per second one kind of pet earns in the pen right now: all its copies, boosts included
+-- Coins a second one pet earns in the pen right now, boosts included
 local function entryIncome(player, entry)
-	local count = entry:GetAttribute("Count") or 1
-	return math.floor(count * incomeOf(entry.Value) * (player:GetAttribute("IncomeMultiplier") or 1) + 0.5)
+	return math.floor(petIncome(entry) * (player:GetAttribute("IncomeMultiplier") or 1) + 0.5)
 end
 
 local function equippedCount(player)
@@ -294,22 +298,86 @@ local function addEggs(player, kind, amount)
 	count.Value += amount
 end
 
-local function addPet(player, pet, amount)
-	local pets = dataFolder(player, "Pets")
-	local entry = pets:FindFirstChild(pet.Id)
-	if not entry then
-		entry = Instance.new("StringValue")
-		entry.Name = pet.Id
-		entry.Value = pet.Id
-		entry:SetAttribute("DisplayName", pet.Name)
-		entry:SetAttribute("Equipped", equippedCount(player) < MAX_EQUIPPED) -- new kinds go straight on if there's room
+-- A random size for a new pet, from SpaceGUIConfig.PetSizes
+local function rollSize()
+	local total = 0
+	for _, band in ipairs(Config.PetSizes) do total += band.Chance end
+	local pick = rng:NextNumber() * total
+	for _, band in ipairs(Config.PetSizes) do
+		pick -= band.Chance
+		if pick < 0 then return math.floor((band.Min + rng:NextNumber() * (band.Max - band.Min)) * 100 + 0.5) / 100 end
 	end
-	local count = (entry:GetAttribute("Count") or 0) + (amount or 1)
-	entry:SetAttribute("Count", count)
-	entry:SetAttribute("Power", powerOf(pet.Id) * count)
+	return 1
+end
+
+local function newPet(player, pet, size)
+	local pets = dataFolder(player, "Pets")
+	local id = pets:GetAttribute("NextId") or 1
+	pets:SetAttribute("NextId", id + 1)
+	local entry = Instance.new("StringValue")
+	entry.Name = "Pet" .. id
+	entry.Value = pet.Id
+	entry:SetAttribute("DisplayName", pet.Name)
+	entry:SetAttribute("Size", size)
+	entry:SetAttribute("Kg", Config.PetKg(pet, size))
+	entry:SetAttribute("Power", powerOf(pet.Id))
+	entry:SetAttribute("Equipped", false)
 	entry.Parent = pets
+	return entry
+end
+
+-- Adds `amount` new pets of one kind, each with its own size. They go straight into the pen while
+-- there's room. Returns the last one.
+local function addPet(player, pet, amount, size)
+	local room = penCapacity(player) - equippedCount(player)
+	local entry
+	for _ = 1, amount or 1 do
+		entry = newPet(player, pet, size or rollSize())
+		if room > 0 then
+			entry:SetAttribute("Equipped", true)
+			room -= 1
+		end
+	end
 	refresh(player)
-	return count
+	return entry
+end
+
+-- Fills the pen with the best pets
+local function equipBest(player)
+	local entries = {}
+	for _, entry in ipairs(dataFolder(player, "Pets"):GetChildren()) do
+		if entry:IsA("StringValue") then table.insert(entries, entry) end
+	end
+	table.sort(entries, betterPet)
+	local capacity = penCapacity(player)
+	for i, entry in ipairs(entries) do
+		local on = i <= capacity
+		if entry:GetAttribute("Equipped") ~= on then entry:SetAttribute("Equipped", on) end
+	end
+	refresh(player)
+end
+
+-- Old saves kept one entry per kind with a Count: split them into single pets of normal size
+local function migratePets(player)
+	local pets = dataFolder(player, "Pets")
+	local highest = 0
+	for _, entry in ipairs(pets:GetChildren()) do
+		highest = math.max(highest, tonumber(entry.Name:match("^Pet(%d+)$")) or 0)
+	end
+	if (pets:GetAttribute("NextId") or 1) <= highest then pets:SetAttribute("NextId", highest + 1) end
+	local changed = false
+	for _, entry in ipairs(pets:GetChildren()) do
+		if entry:IsA("StringValue") and entry:GetAttribute("Size") == nil then
+			local info = petInfo(entry.Value)
+			local count = math.clamp(math.floor(entry:GetAttribute("Count") or 1), 0, MAX_MIGRATED)
+			entry:Destroy()
+			if info then
+				for _ = 1, count do newPet(player, info, 1) end
+			end
+			changed = true
+		end
+	end
+	if changed then equipBest(player) end
 end
 
 local function addBoost(player, key)
@@ -351,29 +419,30 @@ local function applySlowMode(player)
 	end
 end
 
--- Hatches one egg: picks the pet, adds it, and shows the player the reveal
+-- Hatches one egg: picks the pet and its size, adds it, and shows the player the reveal
 local function hatchPet(player, kind)
 	if #Config.Pets == 0 then return end
 	local pet = rollPet(player)
-	local owned = addPet(player, pet)
-	remote:FireClient(player, "Hatched", pet.Id)
-	local entry = dataFolder(player, "Pets"):FindFirstChild(pet.Id)
-	local message
-	if entry and entry:GetAttribute("Equipped") then -- it's in the pen: say what it earns there
-		local earns = perSecond(entryIncome(player, entry))
-		message = owned > 1 and ("Another %s! Your %d make %s."):format(pet.Name, owned, earns)
-			or ("%s hatched from your %s! +%s"):format(pet.Name, kind, earns)
-	elseif owned > 1 then
-		message = ("Another %s! It now has %d Power."):format(pet.Name, powerOf(pet.Id) * owned)
+	local firstOfKind = true
+	for _, entry in ipairs(dataFolder(player, "Pets"):GetChildren()) do
+		if entry.Value == pet.Id then firstOfKind = false break end
+	end
+	local entry = addPet(player, pet)
+	local earns = entryIncome(player, entry)
+	remote:FireClient(player, "Hatched", pet.Id, {Kg = entry:GetAttribute("Kg"), Size = entry:GetAttribute("Size"),
+		Income = earns, New = firstOfKind})
+	local message = ("You hatched a %s kg %s from your %s!"):format(tostring(entry:GetAttribute("Kg")), pet.Name, kind)
+	if entry:GetAttribute("Equipped") then
+		message ..= (" It's in your pen: +%s."):format(perSecond(earns))
 	else
-		message = ("Equip %s on the Pets page to put it in your pen."):format(pet.Name)
+		message ..= " Your pen is full: upgrade it or press Equip Best."
 	end
 	if rng:NextNumber() < BOOST_DROP_CHANCE then
 		local key = BOOST_KEYS[rng:NextInteger(1, #BOOST_KEYS)]
 		addBoost(player, key)
-		message = (message and message .. " " or "") .. ("You also found a %s boost!"):format(BOOSTS[key].Name)
+		message ..= (" You also found a %s boost!"):format(BOOSTS[key].Name)
 	end
-	if message then task.delay(3, function() if player.Parent then notice(player, message) end end) end
+	task.delay(3, function() if player.Parent then notice(player, message) end end)
 end
 
 -- Hatches the pen eggs whose time is up (or all of them with `now`), soonest first, then refills
@@ -404,7 +473,7 @@ instantHatch.OnInvoke = function(player)
 end
 instantHatch.Parent = ServerStorage
 
--- The admin panel's "Give pet": adds `count` copies of a pet, just like hatching them
+-- The admin panel's "Give pet": adds `count` pets of one kind, each with a random size like a hatch
 local givePet = Instance.new("BindableFunction")
 givePet.Name = "GivePet"
 givePet.OnInvoke = function(player, id, count)
@@ -430,36 +499,26 @@ end
 
 function actions.TogglePet(player, id)
 	local entry = type(id) == "string" and dataFolder(player, "Pets"):FindFirstChild(id)
-	if not entry then return end
-	local name = entry:GetAttribute("DisplayName") or id
+	if not entry or not entry:IsA("StringValue") then return end
+	local name = entry:GetAttribute("DisplayName") or entry.Value
 	if entry:GetAttribute("Equipped") then
 		entry:SetAttribute("Equipped", false)
 		refresh(player)
-		return notice(player, ("Unequipped %s. Your pen now makes %s."):format(name,
+		return notice(player, ("Took %s out of your pen. Your pen now makes %s."):format(name,
 			perSecond(player:GetAttribute("PetIncome") or 0)))
 	end
-	if equippedCount(player) >= MAX_EQUIPPED then
-		return notice(player, ("You can equip %d pets. Unequip one first."):format(MAX_EQUIPPED))
+	local capacity = penCapacity(player)
+	if equippedCount(player) >= capacity then
+		return notice(player, ("Your pen is full (%d/%d). Unequip a pet or upgrade your pen."):format(capacity, capacity))
 	end
 	entry:SetAttribute("Equipped", true)
 	refresh(player)
-	notice(player, ("Equipped %s! +%s, coin pickups x%s"):format(name, perSecond(entryIncome(player, entry)),
-		tostring(player:GetAttribute("CoinMultiplier"))))
+	notice(player, ("%s is in your pen! +%s"):format(name, perSecond(entryIncome(player, entry))))
 end
 
--- "Best" means the most coins per second in the pen, then the most Power
+-- Fills the pen with the pets that earn the most
 function actions.EquipBest(player)
-	local entries = {}
-	for _, entry in ipairs(dataFolder(player, "Pets"):GetChildren()) do
-		if entry:IsA("StringValue") then table.insert(entries, entry) end
-	end
-	table.sort(entries, function(a, b)
-		local incomeA, incomeB = entryIncome(player, a), entryIncome(player, b)
-		if incomeA ~= incomeB then return incomeA > incomeB end
-		return (a:GetAttribute("Power") or 0) > (b:GetAttribute("Power") or 0)
-	end)
-	for i, entry in ipairs(entries) do entry:SetAttribute("Equipped", i <= MAX_EQUIPPED) end
-	refresh(player)
+	equipBest(player)
 	notice(player, ("Equipped your best pets! +%s, coin pickups x%s"):format(perSecond(player:GetAttribute("PetIncome") or 0),
 		tostring(player:GetAttribute("CoinMultiplier"))))
 end
@@ -604,6 +663,7 @@ local function setUp(player)
 	folder(player, "PurchaseHistory")
 	folder(player, INCUBATOR)
 	ready[player] = true
+	migratePets(player)
 	watchEggs(player)
 	refresh(player)
 	checkPasses(player)

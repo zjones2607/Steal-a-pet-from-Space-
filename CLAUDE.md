@@ -72,23 +72,28 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
     - `ServerStorage.InstantHatch` (BindableFunction) hatches one player's pen eggs now and returns how many.
   - It creates the `SpaceGUIAction` RemoteEvent and handles `HatchEgg` (now only moves waiting eggs into the pen), `TogglePet`, `EquipBest`, `UseBoost`, `SetSlowMode` and `GiftItem`. It fires `("Hatched", petId)` and `("Notice", text)` back to the client.
   - Each player gets a `SpaceGUIData` folder with `Eggs`, `Pets` and `Boosts` (StringValues). `Eggs` is a copy of `EggInventory`, rebuilt on every change.
-  - Hatching uses the odds in `SpaceGUIConfig.Pets`. Pets stack one entry per kind: duplicates raise `Count` and `Power`. Up to 3 are equipped, which sets the player attributes `EquippedPets`, `PetPower` and `CoinMultiplier`. `CoinPickups` multiplies coins by `CoinMultiplier`.
+  - Hatching uses the odds in `SpaceGUIConfig.Pets`.
+  - **Every pet is its own entry**: a StringValue `Pet<N>` in `SpaceGUIData.Pets` with the kind in `Value`, and the attributes `Size`, `Kg`, `Power`, `Equipped` and `DisplayName`. The folder's `NextId` attribute numbers new pets.
+    - Sizes roll from `Config.PetSizes`. `Kg` = `BaseKg` × size, and the pet earns `Config.PetIncome(kind, size)` = Income × size (rounded, at least 1). Sizes of 2+ show as BIG and 3+ as HUGE.
+    - Old saves (one entry per kind with `Count`) are split into single size-1 pets by `migratePets` on load.
+    - Any mix of pets can be equipped, up to the pen's capacity. New pets go straight in while there's room. Equip Best fills the pen with the best pets: most coins/s, then rarest, then heaviest.
+    - `PetPower` is the 3 strongest equipped pets' Power, so `CoinMultiplier` = 1 + PetPower/100 (× boosts). `CoinPickups` multiplies coins by `CoinMultiplier`.
   - **Pet income**: equipped pets earn coins every second. Each `SpaceGUIConfig.Pets` entry has `Income` (coins/s per copy), and `refresh()` sets three player attributes:
-    - `PenPets`: "id:count,..." for the equipped pets
+    - `PenPets`: "Pet12:astro_dog:1.25:3,..." (name, kind, size, coins/s before boosts) for every pet in the pen, best first
     - `IncomeMultiplier`: x2 for the Coins boost, x2 for the Credits pass
     - `PetIncome`: the total coins/s
     - The 1-second loop adds `PetIncome` to `Coins`, but only for players whose data has loaded.
-  - **Pens**: `PetPens.client.luau` builds every claimed station's equipped pets (each copy, up to 30) from `SpaceModels` on each device.
+  - **Pens**: `PetPens.client.luau` builds every pet in each claimed station's pen (up to 30), scaled by √size so big pets look bigger, from `SpaceModels` on each device.
     - They roam inside `PetPen.Floor`, each with a name and "+N/s" billboard.
     - Only pens near the camera are animated.
     - Unequipped pets stay in the inventory only.
     - `PetFollowers.client.luau` is a retired no-op stub (pets no longer follow players) and can be deleted.
   - **Pen upgrades**: a pen holds `Config.PenCapacity(PenLevel)` pets (10, +1 per level, max level 20 = 30 pets). Upgrades cost `Config.PenUpgradeCost(level)` coins (1,000 growing ×1.35) and are bought only from the Pet Pen card at the top of SpaceGUI's Pets page (`UpgradePen` action).
-    - When more copies are equipped than fit, `refresh()` puts the best earners in the pen. Only those roam and earn. It sets `PenCapacity` and `PenPetCount`.
+    - `refresh()` sets `PenCapacity` and `PenPetCount`.
     - `PenSigns.server.luau` keeps the "PET PEN  N / C PETS" sign on every pen up to date. It takes over the old Studio-made sign if it finds one, otherwise it builds its own over the fence opening. It also deletes any old "Upgrade Pen" ProximityPrompt.
   - Boosts (`CoinBoost`, `LuckBoost`) drop from 15% of hatches. Their end times are saved unix times.
   - Robux: rewards are in `PRODUCT_REWARDS` and `PASS_KEYS`. Product IDs come from `SpaceGUIConfig`. Speed packs have no reward yet.
-  - SpaceGUI's Pets inventory shows each pet's coins/s (Income × Count × `IncomeMultiplier`). Hatching shows a reveal card (`playHatch`: 3D pet, name, rarity, coins/s, NEW! tag) that stays until clicked; hatches in a row queue up.
+  - SpaceGUI's Pets page (`makePets`) lists every pet on its own row, best first, with its kg (and BIG/HUGE), coins/s, rarity and whether it's in the pen. It has a search box (name or rarity), a rarity Filter button, Equip Best, and shows 30 rows at a time with a "Show more" button. The server fires `("Hatched", petId, {Kg, Size, Income, New})`. Hatching shows a reveal card (`playHatch`: 3D pet, name, rarity, kg, coins/s, NEW! tag) that stays until clicked; hatches in a row queue up.
   - SpaceGUI's "Credits" stat shows the player's `Coins`. It counts up smoothly, and shows a green "+N/s" badge from `PetIncome`.
 
 ## Working in a cloud session
