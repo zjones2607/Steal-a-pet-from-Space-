@@ -27,13 +27,10 @@ local PLOT_R = 81.6
 -- New layout
 local HUB_R = 80             -- spawn plaza radius (was 50)
 local PEN_W = 110            -- pen width along the wall
-local PEN_DEPTH = 51         -- pen depth from station to wall
 local PEN_GAP = 4            -- space between a station's outer edge and its pen
 local WALL_GAP = 8           -- space between a pen and the wall
-local WALL_APOTHEM = R_PLOT + PLOT_R + PEN_GAP + PEN_DEPTH + WALL_GAP -- ~417 (was ~385.5); lowered if the ground runs out
+local WALL_APOTHEM = 410     -- wall distance from the base centre (was ~385.5); sits at the green edge of the planet
 local GROUND_EDGE = 429      -- radius where the planet's top ends
-local MIN_WALL = R_PLOT + PLOT_R + PEN_GAP + 16 + WALL_GAP -- closest the wall may come in: keeps pens >= 16 deep
-local GROUND_TOLERANCE = 8   -- the planet's top can dome or tilt a little; only a real drop-off counts as its edge
 local GATE = 7               -- half the width of the opening in the fence facing the station
 local BACKUP = "Decor_InPetPens"
 
@@ -66,23 +63,6 @@ local function plotDir(i) local phi = math.rad((i-1)*45); return Vector3.new(mat
 local function inBox(pos, box, margin)
 	local l = box.cf:PointToObjectSpace(Vector3.new(pos.X, box.cf.Position.Y, pos.Z))
 	return math.abs(l.X) < box.w/2 + margin and math.abs(l.Z) < box.d/2 + margin
-end
-
--- Studio only: the height of the ground at angle a, radius r from the base centre (nil if none there)
-local function groundY(surface, a, r)
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Include
-	params.FilterDescendantsInstances = {surface}
-	local hit = workspace:Raycast(O + Vector3.new(math.sin(a)*r, Y0 + 100, math.cos(a)*r), Vector3.new(0, -250, 0), params)
-	return hit and hit.Position.Y
-end
--- Is there ground at refY (the height measured near the middle) all the way round at radius r?
-local function groundAt(surface, r, refY)
-	for k = 0, 23 do
-		local y = groundY(surface, k * math.pi / 12, r)
-		if not y or math.abs(y - refY) > GROUND_TOLERANCE then return false end
-	end
-	return true
 end
 
 local function growHub(station, hubR)
@@ -255,36 +235,8 @@ function M.Apply(opts)
 	O = station.SpawnHub.PlazaRim.CFrame.Position - Vector3.new(0, Y0, 0)
 	local hubR = opts.hubRadius or HUB_R
 	local apothem = opts.wallApothem or WALL_APOTHEM
-	-- Pull the wall in if the planet's flat top ends before the target, so it never hangs off the edge.
-	-- Skipped only when the probe can't see the ground well inside the base (e.g. the surface isn't
-	-- queryable); a bumpy edge further out just pulls the wall in, down to MIN_WALL.
-	local target = apothem
-	pcall(function()
-		local surface = station.SharedPlanet.HomeSurface
-		-- Measure the real ground height well inside the base (it needn't be exactly Y0 above O)
-		local refY = groundY(surface, 0, 200)
-		if not refY or not groundAt(surface, 200, refY) then return end
-		while apothem > MIN_WALL and not groundAt(surface, apothem + 4, refY) do apothem -= 2 end
-	end)
-	-- Report where the ground really ends (shortest of 24 directions), so the wall can be checked
-	pcall(function()
-		local surface = station.SharedPlanet.HomeSurface
-		local refY = groundY(surface, 0, 200)
-		local edge, lowAt, highAt = math.huge, math.huge, -math.huge
-		for k = 0, 23 do
-			local a = k * math.pi / 12
-			local r = 200
-			while r < 520 do
-				local y = groundY(surface, a, r + 2)
-				if not y or math.abs(y - refY) > GROUND_TOLERANCE then break end
-				lowAt, highAt = math.min(lowAt, y), math.max(highAt, y)
-				r += 2
-			end
-			edge = math.min(edge, r)
-		end
-		print(("RideARocketExpansion: ground found out to %d studs in every direction (heights %.1f to %.1f)"):format(edge, lowAt, highAt))
-	end)
-	if apothem < target then warn(("RideARocketExpansion: flat ground ends early, wall placed at %d"):format(apothem)) end
+	-- The wall goes at a fixed distance. (Probing the planet's collision shape for its edge proved
+	-- unreliable: its hull doesn't follow the visible ground near the rim.) Pass {wallApothem = n} to move it.
 	local recording
 	pcall(function() recording = game:GetService("ChangeHistoryService"):TryBeginRecording("Expand space base") end)
 
