@@ -270,6 +270,7 @@ local function clearPaths(station)
 	end
 	local moved = 0
 	for _, item in ipairs(items) do
+		if item.Name == "GrassPatch" then continue end -- flat patches of grass lie under the paths, out of sight
 		local c, r = footprint(item)
 		if not c or r > MAX_DECOR_RADIUS or c.Y < O.Y + Y0 - 4 or c.Y > O.Y + Y0 + 60 then continue end
 		local shifted = false
