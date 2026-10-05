@@ -32,6 +32,7 @@ end
 ----------------------------------------------------------------------------
 local function isUpgradePrompt(obj)
 	if not obj:IsA("ProximityPrompt") then return false end
+	if obj.Name == "PenUpgradePrompt" then return true end -- what the Studio-made ones are called
 	local text = (obj.ActionText .. " " .. obj.ObjectText):lower()
 	return text:find("upgrade pen", 1, true) ~= nil or text:find("upgrade pet pen", 1, true) ~= nil
 end
