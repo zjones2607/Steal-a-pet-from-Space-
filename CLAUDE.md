@@ -35,7 +35,7 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
 - **Saving**: `src/ServerScriptService/PlayerSaving.server.luau` uses the DataStore `PlayerData_v1` with a per-session lock.
   - To save something new, add a player attribute or folder name to `SAVED_ATTRIBUTES` / `SAVED_FOLDERS`.
   - Other scripts must wait for the player's `DataLoaded` attribute before changing saved data. `PlanetEggCollection`, `CoinPickups` and `Jetpacks` already do.
-  - Saved now: `EggsCollected`, `Coins`, `Jetpack`, `CoinBoostEndsAt` and `LuckBoostEndsAt` (attributes), and `EggInventory`, `EggDiscoveries`, `OwnedJetpacks`, `SpaceGUIData`, `PurchaseHistory` and `IncubatingEggs` (folders).
+  - Saved now: `EggsCollected`, `Coins`, `Jetpack`, `CoinBoostEndsAt`, `LuckBoostEndsAt` and `PenLevel` (attributes), and `EggInventory`, `EggDiscoveries`, `OwnedJetpacks`, `SpaceGUIData`, `PurchaseHistory` and `IncubatingEggs` (folders).
   - `ServerStorage.SavePlayerNow` (a BindableFunction) saves one player at once and returns whether it worked. Robux purchases use it.
 - **Coins and jetpacks**: these are the game's main progression.
   - **Coins**: `CoinPickups.server.luau` scatters 18 coins on each planet. They're worth 5/15/40/100/250 on planets 01–05 and reappear elsewhere 15s after pickup. Touching one adds to the player's `Coins` attribute, and `CoinEffects.client.luau` spins the coins and shows "+value" pop-ups.
@@ -82,6 +82,9 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
     - Only pens near the camera are animated.
     - Unequipped pets stay in the inventory only.
     - `PetFollowers.client.luau` is a retired no-op stub (pets no longer follow players) and can be deleted.
+  - **Pen upgrades**: a pen holds `Config.PenCapacity(PenLevel)` pets (10, +1 per level, max level 20 = 30 pets). Upgrades cost `Config.PenUpgradeCost(level)` coins (1,000 growing ×1.35) and are bought only from the Pet Pen card at the top of SpaceGUI's Pets page (`UpgradePen` action).
+    - When more copies are equipped than fit, `refresh()` puts the best earners in the pen. Only those roam and earn. It sets `PenCapacity` and `PenPetCount`.
+    - `PenSigns.server.luau` keeps the "PET PEN  N / C PETS" sign on every pen up to date. It takes over the old Studio-made sign if it finds one, otherwise it builds its own over the fence opening. It also deletes any old "Upgrade Pen" ProximityPrompt.
   - Boosts (`CoinBoost`, `LuckBoost`) drop from 15% of hatches. Their end times are saved unix times.
   - Robux: rewards are in `PRODUCT_REWARDS` and `PASS_KEYS`. Product IDs come from `SpaceGUIConfig`. Speed packs have no reward yet.
   - SpaceGUI's Pets inventory shows each pet's coins/s (Income × Count × `IncomeMultiplier`). Hatching shows a reveal card (`playHatch`: 3D pet, name, rarity, coins/s, NEW! tag) that stays until clicked; hatches in a row queue up.

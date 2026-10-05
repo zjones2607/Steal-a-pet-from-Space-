@@ -15,6 +15,10 @@
 --     the pen behind your station (StarterPlayerScripts.PetPens builds them from PenPets) and earns
 --     its Income from SpaceGUIConfig.Pets in coins every second. Equipped pets also still multiply
 --     the coins you pick up by 1 + their Power/100.
+--   Pen: holds Config.PenCapacity(PenLevel) pets (10 to start, +1 per upgrade bought on the Pets
+--     page with UpgradePen). When more copies are equipped than fit, the best earners get the spots,
+--     and only the pets in the pen roam and earn. PenPetCount / PenCapacity feed the pen's sign
+--     (PenSigns) and SpaceGUI's pen card.
 --   Boosts: a hatch sometimes drops one. Using it starts a timer, saved as a unix time in
 --     <Boost>EndsAt, so it keeps running while the player is offline. x2 Coins doubles both pet
 --     income and picked-up coins, and so does the x2 Credits pass.
@@ -109,16 +113,32 @@ local function perSecond(coins) return ("%s coin%s/s"):format(tostring(coins), c
 --   CoinMultiplier    what CoinPickups multiplies each coin by
 --   IncomeMultiplier  what pet income is multiplied by: x2 for the x2 Coins boost, x2 for the x2 Credits pass
 --   PetIncome         coins per second the pen earns, which the loop at the bottom pays out
+--   PenCapacity       how many pets fit in the pen, from the PenLevel upgrades
+--   PenPetCount       how many pets are in it (equipped copies, up to PenCapacity)
 local function refresh(player)
 	if not ready[player] then return end
-	local ids, counts, power, income = {}, {}, 0, 0
+	local equipped, power = {}, 0
 	for _, entry in ipairs(dataFolder(player, "Pets"):GetChildren()) do
 		if entry:IsA("StringValue") and entry:GetAttribute("Equipped") then
-			local id, count = entry.Value, entry:GetAttribute("Count") or 1
-			if not counts[id] then table.insert(ids, id) end
-			counts[id] = (counts[id] or 0) + count
+			table.insert(equipped, {id = entry.Value, count = entry:GetAttribute("Count") or 1})
 			power += entry:GetAttribute("Power") or 0
-			income += count * incomeOf(id)
+		end
+	end
+	-- The pen fills up with the best earners first
+	table.sort(equipped, function(a, b)
+		local incomeA, incomeB = incomeOf(a.id), incomeOf(b.id)
+		if incomeA ~= incomeB then return incomeA > incomeB end
+		return a.id < b.id
+	end)
+	local capacity = Config.PenCapacity(player:GetAttribute("PenLevel") or 0)
+	local ids, counts, income, inPen = {}, {}, 0, 0
+	for _, e in ipairs(equipped) do
+		local fits = math.min(e.count, capacity - inPen)
+		if fits > 0 then
+			if not counts[e.id] then table.insert(ids, e.id) end
+			counts[e.id] = (counts[e.id] or 0) + fits
+			income += fits * incomeOf(e.id)
+			inPen += fits
 		end
 	end
 	table.sort(ids)
@@ -142,6 +162,8 @@ local function refresh(player)
 	setAttribute(player, "CoinMultiplier", multiplier)
 	setAttribute(player, "IncomeMultiplier", boost)
 	setAttribute(player, "PetIncome", income)
+	setAttribute(player, "PenCapacity", capacity)
+	setAttribute(player, "PenPetCount", inPen)
 end
 
 -- Coins per second one kind of pet earns in the pen right now: all its copies, boosts included
@@ -444,6 +466,21 @@ function actions.UseBoost(player, key)
 	refresh(player)
 	local left = math.ceil((player:GetAttribute(boost.Attribute) - now) / 60)
 	notice(player, ("%s is on! %d min left."):format(boost.Name:gsub(" %(.*%)", ""), left))
+end
+
+-- Pen upgrades: +Config.PenUpgrade.PerLevel spots for PenUpgradeCost(level) coins
+function actions.UpgradePen(player)
+	local level = player:GetAttribute("PenLevel") or 0
+	local cost = Config.PenUpgradeCost(level)
+	if not cost then return notice(player, "Your pet pen is already as big as it gets!") end
+	local coins = player:GetAttribute("Coins") or 0
+	if coins < cost then
+		return notice(player, ("You need %d more coins to upgrade your pen."):format(cost - coins))
+	end
+	player:SetAttribute("Coins", coins - cost)
+	player:SetAttribute("PenLevel", level + 1)
+	refresh(player)
+	notice(player, ("Pen upgraded to level %d! It now holds %d pets."):format(level + 1, Config.PenCapacity(level + 1)))
 end
 
 function actions.SetSlowMode(player, on)

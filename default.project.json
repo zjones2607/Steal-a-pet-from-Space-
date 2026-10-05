@@ -41,6 +41,9 @@
       "PlanetEggCollection": {
         "$path": "src/ServerScriptService/PlanetEggCollection.server.luau"
       },
+      "PenSigns": {
+        "$path": "src/ServerScriptService/PenSigns.server.luau"
+      },
       "PetsAndShop": {
         "$path": "src/ServerScriptService/PetsAndShop.server.luau"
       },

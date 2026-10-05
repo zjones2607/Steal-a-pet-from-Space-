@@ -9,7 +9,7 @@ local DataStoreService = game:GetService("DataStoreService")
 local RunService = game:GetService("RunService")
 local ServerStorage = game:GetService("ServerStorage")
 
-local SAVED_ATTRIBUTES = {"EggsCollected", "Coins", "Jetpack", "CoinBoostEndsAt", "LuckBoostEndsAt"}
+local SAVED_ATTRIBUTES = {"EggsCollected", "Coins", "Jetpack", "CoinBoostEndsAt", "LuckBoostEndsAt", "PenLevel"}
 local SAVED_FOLDERS = {"EggInventory", "EggDiscoveries", "OwnedJetpacks", "SpaceGUIData", "PurchaseHistory", "IncubatingEggs"}
 local STORE_NAME = "PlayerData_v1"
 local AUTOSAVE_EVERY = 120

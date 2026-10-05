@@ -1153,7 +1153,7 @@ end
 
 emptyState = function(kind, heading, description)
     local box = panel(pages, "EmptyState", 0, 0, bodyWidth, 380, Color3.fromRGB(34, 46, 126), C.Deep, C.Purple, 18)
-    box.LayoutOrder = 2
+    box.LayoutOrder = 5
     aura(box, bodyWidth / 2, 96, 190, C.Purple, 0.82)
     if kind == "Eggs" then
         local _, ctl = Models.EggView(box, 1, {Position = UDim2.fromOffset(bodyWidth / 2 - 70, 20),
@@ -1177,6 +1177,67 @@ local function petIncome(p, count)
 end
 local function perSecondText(coins)
     return "+" .. formatNumber(coins) .. (coins == 1 and " coin/s" or " coins/s")
+end
+
+-- 1234567 -> "1,234,567"
+local function commas(n)
+    n = math.floor(tonumber(n) or 0)
+    local digits = tostring(math.abs(n)):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+    return (n < 0 and "-" or "") .. digits
+end
+
+-- The pet pen card at the top of the Pets page: its level, what it gives you now, and the next upgrade
+local function makePenCard(order)
+    local level = player:GetAttribute("PenLevel") or 0
+    local maxLevel = Config.PenUpgrade.MaxLevel
+    local capacity = Config.PenCapacity(level)
+    local inPen = player:GetAttribute("PenPetCount") or 0
+    local cost = Config.PenUpgradeCost(level)
+    local maxed = cost == nil
+    local accent = maxed and C.Gold or C.Cyan
+    local H = 176
+    local f = panel(pages, "PetPen", 0, 0, bodyWidth, H, Color3.fromRGB(40, 56, 150), C.Deep, accent, 16)
+    f.LayoutOrder = order
+    aura(f, 64, H / 2, 104, accent, 0.75)
+    icon("Pets", f, 20, H / 2 - 44, 88)
+    local textW = bodyWidth - (narrow and 300 or 330)
+
+    local title = label(f, "Title", "PET PEN", 132, 10, 200, 44, 36, C.White)
+    goldText(title)
+    local badge = panel(f, "Level", 132 + 172, 16, maxed and 150 or 120, 34, maxed and C.Gold or C.Purple,
+        maxed and C.GoldDeep or C.Violet, C.White, 17)
+    label(badge, "Text", maxed and "MAX LEVEL" or ("Level " .. level), 0, 0, badge.Size.X.Offset, 34, 20, C.White, CENTER)
+
+    -- What the pen gives you right now
+    label(f, "Holds", ("Holds %d pets  -  %d in your pen now"):format(capacity, inPen), 132, 56, textW, 30, 21, C.White)
+    local earns = label(f, "Earns", "Your pen earns " .. perSecondText(player:GetAttribute("PetIncome") or 0),
+        132, 86, textW, 30, 21, C.White)
+    goldText(earns)
+
+    -- Level progress
+    local track = new("Frame", f, {Name = "Progress", Position = UDim2.fromOffset(132, 128),
+        Size = UDim2.fromOffset(textW, 14), BackgroundColor3 = C.Ink, BorderSizePixel = 0})
+    corner(track, 7)
+    local fill = new("Frame", track, {Name = "Fill", Size = UDim2.fromScale(math.clamp(level / maxLevel, 0, 1), 1),
+        BackgroundColor3 = C.White, BorderSizePixel = 0})
+    corner(fill, 7)
+    if maxed then vgrad(fill, Color3.fromRGB(255, 248, 170), C.GoldDeep)
+    else vgrad(fill, Color3.fromRGB(150, 240, 255), C.Blue) end
+    label(f, "LevelText", ("Level %d / %d"):format(level, maxLevel), 132, 144, textW, 26, 17, C.Muted)
+
+    -- The next upgrade, or a maxed-out badge
+    local bx = bodyWidth - 172
+    if maxed then
+        local done = panel(f, "Maxed", bx, 44, 156, 88, C.Gold, C.GoldDeep, C.White, 16)
+        label(done, "Text", "MAXED\nOUT!", 0, 0, 156, 88, 28, C.White, CENTER)
+        loop(done, 0.9, {Rotation = 3})
+        done.Rotation = -3
+    else
+        label(f, "Next", ("+%d pet: %s coins"):format(Config.PenUpgrade.PerLevel, commas(cost)),
+            bx - 30, 22, 216, 30, 19, C.Gold, CENTER)
+        button(f, "Upgrade", "Upgrade", bx, 58, 156, 64, C.Green,
+            function() sendAction("UpgradePen") end, {rim = C.White, textSize = 28})
+    end
 end
 
 -- Countdowns on the Eggs page for the eggs hatching in the pen: {label, bar, hatchAt, seconds}
@@ -1214,6 +1275,7 @@ local function makeInventory(category)
             if v:IsA("StringValue") then table.insert(entries, v) end
         end
     end
+    if category == "Pets" then makePenCard(2) end
     table.sort(entries, function(a, b)
         -- Eggs: the ones hatching in the pen first, soonest first, then the ones waiting
         local penA, penB = a:GetAttribute("InPen") == true, b:GetAttribute("InPen") == true
@@ -1229,7 +1291,7 @@ local function makeInventory(category)
     end
     if category == "Pets" then
         local wrap = frame(pages, "EquipBestWrap", 0, 0, bodyWidth, 62)
-        wrap.LayoutOrder = 2
+        wrap.LayoutOrder = 3
         button(wrap, "EquipBest", "Equip Best", 0, 0, bodyWidth, 58, C.Purple,
             function() sendAction("EquipBest") end, {rim = C.Cyan, textSize = 28})
     end
@@ -1238,7 +1300,7 @@ local function makeInventory(category)
         local name = (p and p.Name) or entry:GetAttribute("DisplayName") or entry.Value
         local rarityCol = (p and RarityColor[p.Rarity]) or C.Cyan
         local f = panel(pages, entry.Name, 0, 0, bodyWidth, 120, Color3.fromRGB(34, 46, 126), C.Deep, rarityCol, 14)
-        f.LayoutOrder = i + 2
+        f.LayoutOrder = i + 3
         aura(f, 60, 60, 96, rarityCol, 0.8)
         if category == "Pets" then
             local vp, ctl = Models.PetView(f, entry.Value, {Position = UDim2.fromOffset(8, 8),
@@ -1861,6 +1923,11 @@ end
 player.ChildAdded:Connect(function(child)
     if child.Name == Config.DataFolderName then bindData() end
 end)
+for _, attribute in ipairs({"PenLevel", "PenCapacity", "PenPetCount", "PetIncome"}) do
+    player:GetAttributeChangedSignal(attribute):Connect(function()
+        if currentPage == "Pets" then scheduleInventoryRefresh() end
+    end)
+end
 player.ChildRemoved:Connect(function(child)
     if child.Name == Config.DataFolderName then bindData() scheduleInventoryRefresh() end
 end)

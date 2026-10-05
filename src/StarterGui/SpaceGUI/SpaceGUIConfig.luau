@@ -43,6 +43,22 @@ Config.EggHatchSeconds = 60
 Config.EggHatchSecondsByKind = {}
 Config.PenEggSlots = 12
 
+-- Pet pen upgrades, bought on the Pets page. The pen holds BaseCapacity pets, and each level adds
+-- PerLevel more, up to MaxLevel. Only the pets in the pen roam it and earn coins (the best earners
+-- among your equipped pets get the spots). Upgrading from level L costs PenUpgradeCost(L) coins.
+Config.PenUpgrade = {BaseCapacity = 10, PerLevel = 1, MaxLevel = 20, BaseCost = 1000, CostGrowth = 1.35}
+function Config.PenCapacity(level)
+    local u = Config.PenUpgrade
+    return u.BaseCapacity + u.PerLevel * math.clamp(level or 0, 0, u.MaxLevel)
+end
+function Config.PenUpgradeCost(level)
+    local u = Config.PenUpgrade
+    if (level or 0) >= u.MaxLevel then return nil end
+    local cost = u.BaseCost * u.CostGrowth ^ (level or 0)
+    local step = cost >= 100000 and 5000 or cost >= 10000 and 500 or 50 -- round to a tidy price
+    return math.floor(cost / step + 0.5) * step
+end
+
 -- Gamepad button that opens/closes the shop (keyboard uses B).
 Config.GamepadShopButton = Enum.KeyCode.ButtonY
 
