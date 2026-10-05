@@ -18,7 +18,7 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
     - `RideARocketExpansion` measures everything from the spawn plaza: base origin = `SpawnHub.PlazaRim` centre minus `Y0`.
     - `StationClaims` and `RideARocketLaunchSiteBuilder` aim at the plaza's real position.
   - `RideARocketExpansion`: run with `require(game.ServerStorage.RideARocketExpansion).Apply()`.
-    - It grows the spawn plaza (radius 80) and moves the wall out (~417). It also builds a fenced 110×51 pet pen behind each of the 8 stations: `StationPlot<i>.PetPen`, whose `Floor` part is the walkable grass slab. The fence opening faces the station.
+    - It grows the spawn plaza (radius 80) and moves the wall out to a fixed 410 (`Apply({force = true, wallApothem = n})` to change). Auto-probing the ground edge was removed: the planet's collision hull doesn't match its visible rim. It also builds a fenced 110×51 pet pen behind each of the 8 stations: `StationPlot<i>.PetPen`, whose `Floor` part is the walkable grass slab. The fence opening faces the station.
     - v4 replaced the old crop farms (`Farm`) with these pens. It moves any MapDetailer decor that lands inside a pen to `ServerStorage.RemovedMapBackups.Decor_InPetPens`. After re-running the MapDetailer, run `Apply({force = true})`.
     - It's versioned through the `ExpansionVersion` attribute on `SpaceStation`. Every step is idempotent, so to change the pens, edit `buildPen`, bump `VERSION`, and have them run `Apply()` again.
     - The current version is 4. The owner has run at least v3.
