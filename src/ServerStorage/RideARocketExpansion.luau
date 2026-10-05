@@ -33,6 +33,7 @@ local WALL_GAP = 8           -- space between a pen and the wall
 local WALL_APOTHEM = R_PLOT + PLOT_R + PEN_GAP + PEN_DEPTH + WALL_GAP -- ~417 (was ~385.5); lowered if the ground runs out
 local GROUND_EDGE = 429      -- radius where the planet's top ends
 local MIN_WALL = R_PLOT + PLOT_R + PEN_GAP + 16 + WALL_GAP -- closest the wall may come in: keeps pens >= 16 deep
+local GROUND_TOLERANCE = 8   -- the planet's top can dome or tilt a little; only a real drop-off counts as its edge
 local GATE = 7               -- half the width of the opening in the fence facing the station
 local BACKUP = "Decor_InPetPens"
 
@@ -79,7 +80,7 @@ end
 local function groundAt(surface, r, refY)
 	for k = 0, 23 do
 		local y = groundY(surface, k * math.pi / 12, r)
-		if not y or math.abs(y - refY) > 1.5 then return false end
+		if not y or math.abs(y - refY) > GROUND_TOLERANCE then return false end
 	end
 	return true
 end
@@ -264,6 +265,24 @@ function M.Apply(opts)
 		local refY = groundY(surface, 0, 200)
 		if not refY or not groundAt(surface, 200, refY) then return end
 		while apothem > MIN_WALL and not groundAt(surface, apothem + 4, refY) do apothem -= 2 end
+	end)
+	-- Report where the ground really ends (shortest of 24 directions), so the wall can be checked
+	pcall(function()
+		local surface = station.SharedPlanet.HomeSurface
+		local refY = groundY(surface, 0, 200)
+		local edge, lowAt, highAt = math.huge, math.huge, -math.huge
+		for k = 0, 23 do
+			local a = k * math.pi / 12
+			local r = 200
+			while r < 520 do
+				local y = groundY(surface, a, r + 2)
+				if not y or math.abs(y - refY) > GROUND_TOLERANCE then break end
+				lowAt, highAt = math.min(lowAt, y), math.max(highAt, y)
+				r += 2
+			end
+			edge = math.min(edge, r)
+		end
+		print(("RideARocketExpansion: ground found out to %d studs in every direction (heights %.1f to %.1f)"):format(edge, lowAt, highAt))
 	end)
 	if apothem < target then warn(("RideARocketExpansion: flat ground ends early, wall placed at %d"):format(apothem)) end
 	local recording
