@@ -35,7 +35,7 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
 - **Saving**: `src/ServerScriptService/PlayerSaving.server.luau` uses the DataStore `PlayerData_v1` with a per-session lock.
   - To save something new, add a player attribute or folder name to `SAVED_ATTRIBUTES` / `SAVED_FOLDERS`.
   - Other scripts must wait for the player's `DataLoaded` attribute before changing saved data. `PlanetEggCollection`, `CoinPickups` and `Jetpacks` already do.
-  - Saved now: `EggsCollected`, `Coins`, `Jetpack`, `CoinBoostEndsAt` and `LuckBoostEndsAt` (attributes), and `EggInventory`, `EggDiscoveries`, `OwnedJetpacks`, `SpaceGUIData` and `PurchaseHistory` (folders).
+  - Saved now: `EggsCollected`, `Coins`, `Jetpack`, `CoinBoostEndsAt` and `LuckBoostEndsAt` (attributes), and `EggInventory`, `EggDiscoveries`, `OwnedJetpacks`, `SpaceGUIData`, `PurchaseHistory` and `IncubatingEggs` (folders).
   - `ServerStorage.SavePlayerNow` (a BindableFunction) saves one player at once and returns whether it worked. Robux purchases use it.
 - **Coins and jetpacks**: these are the game's main progression.
   - **Coins**: `CoinPickups.server.luau` scatters 18 coins on each planet. They're worth 5/15/40/100/250 on planets 01–05 and reappear elsewhere 15s after pickup. Touching one adds to the player's `Coins` attribute, and `CoinEffects.client.luau` spins the coins and shows "+value" pop-ups.
@@ -60,8 +60,16 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
   - Only admins get `ServerStorage.AdminPanelClient` copied into their PlayerGui.
   - Every `AdminRemote` request re-checks admin status and validates its arguments. Keep it that way when adding actions to the `actions` table.
   - Announcements are filtered with TextService and shown to everyone by `Announcements.client.luau`.
+  - The Eggs tab instantly hatches pen eggs: the admin's own, everyone's in this server, or everyone's in every server (MessagingService topic `AdminInstantHatch`). It calls `ServerStorage.InstantHatch`.
 - **Pets, boosts and the Robux shop**: `PetsAndShop.server.luau` is the server side of SpaceGUI's Eggs, Pets, Boosts and Shop pages.
-  - It creates the `SpaceGUIAction` RemoteEvent and handles `HatchEgg`, `TogglePet`, `EquipBest`, `UseBoost`, `SetSlowMode` and `GiftItem`. It fires `("Hatched", petId)` and `("Notice", text)` back to the client.
+  - **Eggs hatch in the pen on a timer.** Collected or bought eggs land in `EggInventory`, and PetsAndShop moves them straight into the player's `IncubatingEggs` folder.
+    - Each egg there is a StringValue `Egg1..EggN` (its spot in the pen). Its kind is in `Value`, and it has the attributes `HatchAt` (unix time) and `Seconds`.
+    - Up to `Config.PenEggSlots` (12) fit at once; the rest wait in `EggInventory` and move in as eggs hatch.
+    - The timer is `Config.EggHatchSeconds` (60), or `EggHatchSecondsByKind`. The x2 Growth pass halves it.
+    - The 1-second loop hatches due eggs (also while offline, on the next join) and fires `"Hatched"` for each one.
+    - `PenEggs.client.luau` shows them in nests along the back fence of each pen, with a countdown, and they wobble harder near hatching. SpaceGUI's Eggs page lists them (`Pen_EggN` entries in `SpaceGUIData.Eggs`) with live timers.
+    - `ServerStorage.InstantHatch` (BindableFunction) hatches one player's pen eggs now and returns how many.
+  - It creates the `SpaceGUIAction` RemoteEvent and handles `HatchEgg` (now only moves waiting eggs into the pen), `TogglePet`, `EquipBest`, `UseBoost`, `SetSlowMode` and `GiftItem`. It fires `("Hatched", petId)` and `("Notice", text)` back to the client.
   - Each player gets a `SpaceGUIData` folder with `Eggs`, `Pets` and `Boosts` (StringValues). `Eggs` is a copy of `EggInventory`, rebuilt on every change.
   - Hatching uses the odds in `SpaceGUIConfig.Pets`. Pets stack one entry per kind: duplicates raise `Count` and `Power`. Up to 3 are equipped, which sets the player attributes `EquippedPets`, `PetPower` and `CoinMultiplier`. `CoinPickups` multiplies coins by `CoinMultiplier`.
   - **Pet income**: equipped pets earn coins every second. Each `SpaceGUIConfig.Pets` entry has `Income` (coins/s per copy), and `refresh()` sets three player attributes:
@@ -75,7 +83,7 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
     - Unequipped pets stay in the inventory only.
     - `PetFollowers.client.luau` is a retired no-op stub (pets no longer follow players) and can be deleted.
   - Boosts (`CoinBoost`, `LuckBoost`) drop from 15% of hatches. Their end times are saved unix times.
-  - Robux: rewards are in `PRODUCT_REWARDS` and `PASS_KEYS`. Product IDs come from `SpaceGUIConfig`. Speed packs and the x2 Growth pass have no reward yet.
+  - Robux: rewards are in `PRODUCT_REWARDS` and `PASS_KEYS`. Product IDs come from `SpaceGUIConfig`. Speed packs have no reward yet.
   - SpaceGUI's Pets inventory shows each pet's coins/s (Income × Count × `IncomeMultiplier`). Hatching shows a reveal card (`playHatch`: 3D pet, name, rarity, coins/s, NEW! tag) that stays until clicked; hatches in a row queue up.
   - SpaceGUI's "Credits" stat shows the player's `Coins`. It counts up smoothly, and shows a green "+N/s" badge from `PetIncome`.
 
