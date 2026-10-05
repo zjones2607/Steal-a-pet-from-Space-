@@ -1199,7 +1199,7 @@ local function makePenCard(order)
     local f = panel(pages, "PetPen", 0, 0, bodyWidth, H, Color3.fromRGB(40, 56, 150), C.Deep, accent, 16)
     f.LayoutOrder = order
     aura(f, 64, H / 2, 104, accent, 0.75)
-    icon("Pets", f, 20, H / 2 - 44, 88)
+    icon("Pen", f, 20, H / 2 - 44, 88)
     local textW = bodyWidth - (narrow and 300 or 330)
 
     local title = label(f, "Title", "PET PEN", 132, 10, 200, 44, 36, C.White)

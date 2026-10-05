@@ -60,6 +60,7 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
   - Only admins get `ServerStorage.AdminPanelClient` copied into their PlayerGui.
   - Every `AdminRemote` request re-checks admin status and validates its arguments. Keep it that way when adding actions to the `actions` table.
   - Announcements are filtered with TextService and shown to everyone by `Announcements.client.luau`.
+  - The Give tab lets an admin give **themselves** (never others) coins (Give or Set), any number of copies of a pet (`ServerStorage.GivePet`), or any jetpack (owned and equipped).
   - The Eggs tab instantly hatches pen eggs: the admin's own, everyone's in this server, or everyone's in every server (MessagingService topic `AdminInstantHatch`). It calls `ServerStorage.InstantHatch`.
 - **Pets, boosts and the Robux shop**: `PetsAndShop.server.luau` is the server side of SpaceGUI's Eggs, Pets, Boosts and Shop pages.
   - **Eggs hatch in the pen on a timer.** Collected or bought eggs land in `EggInventory`, and PetsAndShop moves them straight into the player's `IncubatingEggs` folder.
