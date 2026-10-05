@@ -76,6 +76,7 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
     - `PetFollowers.client.luau` is a retired no-op stub (pets no longer follow players) and can be deleted.
   - Boosts (`CoinBoost`, `LuckBoost`) drop from 15% of hatches. Their end times are saved unix times.
   - Robux: rewards are in `PRODUCT_REWARDS` and `PASS_KEYS`. Product IDs come from `SpaceGUIConfig`. Speed packs and the x2 Growth pass have no reward yet.
+  - SpaceGUI's Pets inventory shows each pet's coins/s (Income × Count × `IncomeMultiplier`). Hatching shows a reveal card (`playHatch`: 3D pet, name, rarity, coins/s, NEW! tag) that stays until clicked; hatches in a row queue up.
   - SpaceGUI's "Credits" stat shows the player's `Coins`. It counts up smoothly, and shows a green "+N/s" badge from `PetIncome`.
 
 ## Working in a cloud session
