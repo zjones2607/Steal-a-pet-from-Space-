@@ -58,11 +58,12 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
     - It lists every tier cheapest first, each spinning in a ViewportFrame, with its coin price in a gold pill and a Buy / Equip / Equipped button that calls the remotes.
     - Unowned jetpacks are greyed out and see-through.
     - The page re-renders when coins, the equipped jetpack or `OwnedJetpacks` change.
-  - **Flight animation**: `JetpackAnimations.client.luau` (which also requires `JetpackFlight`) poses R15 characters by code. No animation assets are used.
+  - **Flight animation**: `JetpackAnimations.client.luau` (which also requires `JetpackFlight`) poses R15 and R6 characters by code. No animation assets are used. R6's turned Torso joints get their own axis conversion in `R6_JOINTS`.
     - It sets `Motor6D.Transform` in `PreSimulation`, after Roblox's animations, with each joint on a spring.
     - The phases are: a launch crouch then rocket push; flying poses driven by velocity in the body's frame (dive, brake, strafe, climb, tuck, hover paddle, flailing when out of fuel); legs reaching for the ground near landing; and a knee-bend on touchdown.
     - Everyone sees everyone: the server sets the character attribute `JetpackFlying` from `JetpackThrust:FireServer(flames, flying)`.
-    - It also draws dust rings at launch and landing, white wind `Trail`s on fast flyers' feet, and screen-edge speed lines for the local player.
+    - It also draws dust rings at launch and landing, and screen-edge speed lines for the local player (no foot trails: the owner removed them).
+    - It mutes the root part's `Running`/`Climbing`/`Swimming` sounds while a character flies, and restores them on landing.
   - **Flight controls**: `JetpackHUD.client.luau` draws cartoon buttons in SpaceGUI's style.
     - LAUNCH (F key) slides up from the bottom while you stand in a `LaunchZone` and drops away when you leave it. It breathes, a shine sweeps across it, and it turns grey while recharging.
     - MY PAD (T key) is shown instead while you're off the pad and teleports you to your launch pad.

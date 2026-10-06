@@ -1,5 +1,5 @@
 -- JetpackAnimations: makes jetpack flying look alive, for every flying player, on every device.
--- No animation files are needed: the arms, legs, body and head of an R15 character are posed by code
+-- No animation files are needed: the arms, legs, body and head of R15 and R6 characters are posed by code
 -- each frame (Motor6D.Transform, set after Roblox's own animations), and every joint follows its
 -- target on a spring, so the poses flow into each other instead of snapping.
 --   Launch    a quick crouch, then a straight-as-an-arrow push upward, arms pinned down, chin up
@@ -15,8 +15,8 @@
 -- JetpackFlight's JetpackThrust messages). The local player's own flight is read straight from
 -- JetpackFlight, so their animation starts with no delay.
 -- Speed: white speed lines stream in and out around the edges of the screen when you fly fast (and
--- burst on launch), and fast flyers leave wind streaks behind their feet that everyone can see.
--- R6 characters get the speed lines and streaks but no limb poses.
+-- burst on launch). R6 characters have no elbows, knees or waist, so they get the rest of each pose.
+-- Footstep sounds are muted while flying (Roblox's character sounds don't know about jetpacks).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -32,9 +32,19 @@ local LAUNCH_CROUCH = 0.22   -- seconds of crouch at the start of a launch
 local LAUNCH_PUSH = 0.9      -- seconds of the straight push pose after it
 local LAND_REACH = 16        -- studs above the ground where the legs start reaching for it
 local TOUCHDOWN = 0.4        -- seconds of knee-bend after landing
-local STREAK_SPEED = 0.55    -- share of top speed where wind streaks and speed lines start
+local STREAK_SPEED = 0.55    -- share of top speed where the speed lines start
 local MAX_LINES = 26
 
+-- R6 joints live in the Torso and are turned 90 degrees, so each one needs its own conversion from
+-- (x = swing forward, z = swing out to the right) into its own axes
+local R6_JOINTS = {
+	["Left Shoulder"] = {name = "LeftShoulder", convert = function(x, z) return CFrame.Angles(z, 0, -x) end},
+	["Right Shoulder"] = {name = "RightShoulder", convert = function(x, z) return CFrame.Angles(-z, 0, x) end},
+	["Left Hip"] = {name = "LeftHip", convert = function(x, z) return CFrame.Angles(z, 0, -x) end},
+	["Right Hip"] = {name = "RightHip", convert = function(x, z) return CFrame.Angles(-z, 0, x) end},
+	["Neck"] = {name = "Neck", convert = function(x) return CFrame.Angles(-x, 0, 0) end},
+}
+local function r15Convert(x, z) return CFrame.Angles(x, 0, z) end
 local R15_JOINTS = {
 	Waist = "UpperTorso", Neck = "Head",
 	LeftShoulder = "LeftUpperArm", RightShoulder = "RightUpperArm",
@@ -53,7 +63,7 @@ local function lerp(a, b, t) return a + (b - a) * t end
 local function clamp01(x) return math.clamp(x, 0, 1) end
 
 ----------------------------------------------------------------------------
--- Effects in the world: dust rings and wind streaks
+-- Effects in the world: dust rings
 ----------------------------------------------------------------------------
 local effects = new("Folder", workspace, {Name = "JetpackEffects"})
 local rayParams = RaycastParams.new()
@@ -82,14 +92,25 @@ local function riderFor(character)
 	local root = humanoid and humanoid.RootPart
 	if not root then return nil end
 	rider = {character = character, humanoid = humanoid, root = root, joints = {}, angles = {}, targets = {},
-		flying = false, since = 0, landedAt = nil, trails = {}}
+		flying = false, since = 0, landedAt = nil, convert = {}, muted = {}}
 	if humanoid.RigType == Enum.HumanoidRigType.R15 then
 		for joint, partName in pairs(R15_JOINTS) do
 			local part = character:FindFirstChild(partName)
 			local motor = part and part:FindFirstChild(joint)
 			if motor and motor:IsA("Motor6D") then
 				rider.joints[joint] = motor
+				rider.convert[joint] = r15Convert
 				rider.angles[joint] = {x = 0, z = 0}
+			end
+		end
+	else
+		local torso = character:FindFirstChild("Torso")
+		for motorName, j in pairs(R6_JOINTS) do
+			local motor = torso and torso:FindFirstChild(motorName)
+			if motor and motor:IsA("Motor6D") then
+				rider.joints[j.name] = motor
+				rider.convert[j.name] = j.convert
+				rider.angles[j.name] = {x = 0, z = 0}
 			end
 		end
 	end
@@ -97,24 +118,22 @@ local function riderFor(character)
 	return rider
 end
 
-local function setTrails(rider, on)
-	if on and #rider.trails == 0 then
-		for _, name in ipairs({"LeftFoot", "RightFoot", "Left Leg", "Right Leg"}) do
-			local part = rider.character:FindFirstChild(name)
-			if part then
-				local a0 = new("Attachment", part, {Name = "WindA", Position = Vector3.new(-0.15, -0.3, 0.2)})
-				local a1 = new("Attachment", part, {Name = "WindB", Position = Vector3.new(0.15, -0.3, 0.2)})
-				local trail = new("Trail", part, {Name = "WindStreak", Attachment0 = a0, Attachment1 = a1,
-					Lifetime = 0.3, MinLength = 0.1, FaceCamera = true, LightEmission = 0.6, Enabled = false,
-					Color = ColorSequence.new(Color3.new(1, 1, 1)),
-					Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.45), NumberSequenceKeypoint.new(1, 1)}),
-					WidthScale = NumberSequence.new({NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0)})})
-				table.insert(rider.trails, {trail = trail, a0 = a0, a1 = a1})
+-- Roblox plays footstep (and climbing/swimming) sounds from the root part; silence them in the air
+local QUIET = {"Running", "Climbing", "Swimming"}
+local function muteSounds(rider, on)
+	if on then
+		for _, name in ipairs(QUIET) do
+			local sound = rider.root:FindFirstChild(name)
+			if sound and sound:IsA("Sound") then
+				if rider.muted[sound] == nil then rider.muted[sound] = sound.Volume end
+				if sound.Volume ~= 0 then sound.Volume = 0 end
 			end
 		end
-	elseif not on then
-		for _, t in ipairs(rider.trails) do t.trail:Destroy(); t.a0:Destroy(); t.a1:Destroy() end
-		table.clear(rider.trails)
+	else
+		for sound, volume in pairs(rider.muted) do
+			if sound.Parent then sound.Volume = volume end
+		end
+		table.clear(rider.muted)
 	end
 end
 
@@ -315,12 +334,11 @@ RunService.PreSimulation:Connect(function(dt)
 		local flying = active[character] == true and character.Parent ~= nil and rider.humanoid.Health > 0
 		if flying and not rider.flying then
 			rider.flying, rider.since, rider.landedAt = true, clock, nil
-			setTrails(rider, true)
 			dustRing(rider.root.Position - Vector3.new(0, rider.humanoid.HipHeight + rider.root.Size.Y / 2, 0),
 				Color3.fromRGB(235, 235, 245), 18)
 		elseif not flying and rider.flying then
 			rider.flying = false
-			setTrails(rider, false)
+			muteSounds(rider, false)
 			if character.Parent and rider.humanoid.Health > 0 then
 				rider.landedAt = clock
 				dustRing(rider.root.Position - Vector3.new(0, rider.humanoid.HipHeight + rider.root.Size.Y / 2, 0),
@@ -356,10 +374,8 @@ RunService.PreSimulation:Connect(function(dt)
 				if hit then info.landing = clamp01(1 - (root.Position.Y - legs - hit.Position.Y) / LAND_REACH) end
 			end
 			pose = poseFor(rider, info, clock + (rider.since % 7))
-			-- Wind streaks behind fast flyers
+			muteSounds(rider, true)
 			local speed = v.Magnitude
-			local fast = speed > flySpeed * STREAK_SPEED or (launchTime and speed > launchSpeed * 0.35)
-			for _, t in ipairs(rider.trails) do t.trail.Enabled = fast == true end
 			if character == mine then
 				local ref = launchTime and launchSpeed or flySpeed
 				myIntensity = clamp01((speed / ref - STREAK_SPEED) / (1 - STREAK_SPEED))
@@ -375,7 +391,7 @@ RunService.PreSimulation:Connect(function(dt)
 				local a = rider.angles[joint]
 				a.x += (target.x - a.x) * alpha
 				a.z += (target.z - a.z) * alpha
-				if motor.Parent then motor.Transform = CFrame.Angles(a.x, 0, a.z) end
+				if motor.Parent then motor.Transform = rider.convert[joint](a.x, a.z) end
 			end
 		else
 			-- Done: let the normal animations take over, and forget this rider until it flies again
@@ -390,5 +406,5 @@ end)
 
 Players.PlayerRemoving:Connect(function(leaving)
 	local character = leaving.Character
-	if character and riders[character] then setTrails(riders[character], false); riders[character] = nil end
+	if character and riders[character] then muteSounds(riders[character], false); riders[character] = nil end
 end)
