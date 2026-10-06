@@ -25,28 +25,28 @@ Config.TeleportGamepadButton = Enum.KeyCode.ButtonL2
 Config.TeleportCooldown = 3
 
 -- Planet: the planet it can reach (part of the planet model's name)   Speed: climb speed (studs/s)
--- AirSpeed: steering speed while flying and falling
--- Cooldown: seconds before it can launch again
+-- AirSpeed: steering speed (kept for the shop's stats)   FlySpeed: free-flight speed after the launch
+-- Cooldown: seconds after landing before it can launch again
 -- Colors: Body = frame, Tank = fuel tanks, Glow = neon trim, Flame = exhaust
 Config.Tiers = {
 	{Id = "starter", Name = "Starter Jet", Rarity = "Common", Planet = "Moon", Price = 0,
-		Speed = 140, AirSpeed = 40, Cooldown = 3,
+		Speed = 140, AirSpeed = 40, FlySpeed = 80, Cooldown = 3,
 		Colors = {Body = Color3.fromRGB(200, 210, 230), Tank = Color3.fromRGB(70, 140, 255),
 			Glow = Color3.fromRGB(90, 220, 255), Flame = Color3.fromRGB(255, 170, 60)}},
 	{Id = "frost", Name = "Frost Booster", Rarity = "Uncommon", Planet = "Mars", Price = 250,
-		Speed = 210, AirSpeed = 48, Cooldown = 2.5,
+		Speed = 210, AirSpeed = 48, FlySpeed = 100, Cooldown = 2.5,
 		Colors = {Body = Color3.fromRGB(225, 240, 255), Tank = Color3.fromRGB(120, 220, 255),
 			Glow = Color3.fromRGB(180, 250, 255), Flame = Color3.fromRGB(120, 210, 255)}},
 	{Id = "magma", Name = "Magma Thruster", Rarity = "Rare", Planet = "Mercury", Price = 1500,
-		Speed = 290, AirSpeed = 56, Cooldown = 2,
+		Speed = 290, AirSpeed = 56, FlySpeed = 125, Cooldown = 2,
 		Colors = {Body = Color3.fromRGB(70, 56, 70), Tank = Color3.fromRGB(255, 110, 40),
 			Glow = Color3.fromRGB(255, 200, 60), Flame = Color3.fromRGB(255, 90, 30)}},
 	{Id = "crystal", Name = "Crystal Wing", Rarity = "Epic", Planet = "Venus", Price = 7500,
-		Speed = 370, AirSpeed = 64, Cooldown = 1.5,
+		Speed = 370, AirSpeed = 64, FlySpeed = 150, Cooldown = 1.5,
 		Colors = {Body = Color3.fromRGB(90, 60, 170), Tank = Color3.fromRGB(190, 110, 255),
 			Glow = Color3.fromRGB(255, 120, 230), Flame = Color3.fromRGB(230, 120, 255)}},
 	{Id = "cosmic", Name = "Cosmic Nova", Rarity = "Legendary", Planet = "Jupiter", Price = 30000,
-		Speed = 450, AirSpeed = 75, Cooldown = 1,
+		Speed = 450, AirSpeed = 75, FlySpeed = 180, Cooldown = 1,
 		Colors = {Body = Color3.fromRGB(40, 30, 90), Tank = Color3.fromRGB(255, 210, 70),
 			Glow = Color3.fromRGB(255, 90, 230), Flame = Color3.fromRGB(255, 240, 140)}},
 }

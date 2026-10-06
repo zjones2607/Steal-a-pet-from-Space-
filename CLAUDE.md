@@ -42,7 +42,14 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
   - **Coins**: `CoinPickups.server.luau` scatters 18 coins on each planet. They're worth 5/15/40/100/250 on planets 01–05 and reappear elsewhere 15s after pickup. Touching one adds to the player's `Coins` attribute, and `CoinEffects.client.luau` spins the coins and shows "+value" pop-ups.
   - **Jetpack data**: tiers and prices are in `ReplicatedStorage.Jetpacks.JetpackConfig`, and `JetpackModels` builds them from Parts.
   - **Server**: `Jetpacks.server.luau` creates the `BuyJetpack`, `EquipJetpack`, `JetpackThrust` and `TeleportToLaunchSite` remotes in that folder. It also straps the equipped jetpack to each player's back.
-  - **Flying**: it happens on the client in `JetpackFlight`. It only works inside a `LaunchZone`, which `RideARocketLaunchSiteBuilder` puts on each station.
+  - **Flying**: it happens on the client in `JetpackFlight`. Launching only works inside a `LaunchZone`, which `RideARocketLaunchSiteBuilder` puts on each station.
+    - LAUNCH boosts the player halfway up to their tier's ceiling (state `Thrust`), easing in and out.
+    - Then they fly freely (state `Flying`) at the tier's `FlySpeed`, using a `LinearVelocity` and an `AlignOrientation` with `PlatformStand` on.
+      - WASD / the stick fly where the camera looks (tilts under 20° count as level). Space / jump / A go up, and Ctrl / Q / B go down.
+      - With no input they hover. Velocity blends smoothly, and the body leans and banks.
+      - Players can't fly above `Config.Ceiling(tier)`.
+    - Touching collidable ground (a downward raycast) lands them. The cooldown starts at landing.
+    - JetpackHUD shows a controls hint while flying.
   - **Shop**: the Jetpacks page in SpaceGUI (4th right-column button, with the vector `Jetpack` icon from `SpaceIcons`).
     - It lists every tier cheapest first, each spinning in a ViewportFrame, with its coin price in a gold pill and a Buy / Equip / Equipped button that calls the remotes.
     - Unowned jetpacks are greyed out and see-through.
