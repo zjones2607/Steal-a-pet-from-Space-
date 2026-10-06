@@ -119,6 +119,9 @@
         "CoinEffects": {
           "$path": "src/StarterPlayer/StarterPlayerScripts/CoinEffects.client.luau"
         },
+        "JetpackAnimations": {
+          "$path": "src/StarterPlayer/StarterPlayerScripts/JetpackAnimations.client.luau"
+        },
         "JetpackHUD": {
           "$path": "src/StarterPlayer/StarterPlayerScripts/JetpackHUD.client.luau"
         },
