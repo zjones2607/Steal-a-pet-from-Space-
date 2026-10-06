@@ -5,6 +5,7 @@
 --           away when you step off. Flies with the equipped jetpack (JetpackFlight). Key: F / X
 --   MY PAD  shows while you're off the pad and teleports you to your station's launch pad
 --           (TeleportToLaunchSite). Key: T / L2, which works even while the buttons are hidden.
+--   While flying, a hint at the top of the screen shows the flight controls.
 -- Both buttons slide away while a menu is open: SpaceGUI and the admin panel set the local
 -- player attributes listed in MENU_ATTRIBUTES while their windows are showing.
 local Players = game:GetService("Players")
@@ -266,6 +267,22 @@ end
 launch.holder.Activated:Connect(doLaunch)
 pad.holder.Activated:Connect(goToPad)
 
+-- Flight controls hint, shown while flying
+local touch = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+local hint = text(gui, touch and "Stick: fly where you look   -   Jump: up   -   Touch the ground to land"
+	or "WASD: fly where you look   -   Space: up   -   Ctrl / Q: down   -   Touch the ground to land",
+	20, {AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 64), Size = UDim2.fromOffset(700, 30),
+		TextTransparency = 1, TextScaled = false})
+local hintStroke = hint:FindFirstChildOfClass("UIStroke")
+hintStroke.Transparency = 1
+local hintShown = false
+local function showHint(on)
+	if on == hintShown then return end
+	hintShown = on
+	tween(hint, 0.4, {TextTransparency = on and 0 or 1})
+	tween(hintStroke, 0.4, {Transparency = on and 0 or 1})
+end
+
 -- Watch the pad and the jetpack's state
 local onPad = false
 local showLaunch, showPad = false, true
@@ -293,7 +310,8 @@ task.spawn(function()
 		local wantLaunch, wantPad = onPad and not hidden, not onPad and not hidden
 		if wantLaunch ~= showLaunch then showLaunch = wantLaunch; slide(launchSlot, wantLaunch) end
 		if wantPad ~= showPad then showPad = wantPad; slidePad(wantPad) end
-		if state == "Thrust" then
+		showHint((state == "Thrust" or state == "Flying") and not hidden)
+		if state == "Thrust" or state == "Flying" then
 			launchText.Text = "FLYING!"; setLook(true, 0)
 		elseif cooldown > 0 then
 			launchText.Text = "RECHARGING"; setLook(false, cooldown)
