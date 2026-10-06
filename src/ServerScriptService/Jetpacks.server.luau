@@ -30,16 +30,17 @@ local map = workspace:WaitForChild("JetpackPetRescueMap")
 local station = map:WaitForChild("SpaceStation")
 local lastTeleport = {} -- [player] = os.clock() of their last teleport
 
--- Each jetpack climbs to just above its planet. Work out those heights from where the planets
--- really are, and store them on JetpackConfig so every player's device can read them.
+-- Each jetpack's fuel is sized from where the planets really are: store each planet's landing top
+-- (and the height just above it) on JetpackConfig so every player's device can read them.
 local configModule = folder:WaitForChild("JetpackConfig")
 for _, tier in ipairs(Config.Tiers) do
 	local found = false
 	for _, planet in ipairs(map:GetChildren()) do
 		local surface = planet:FindFirstChild("PlanetSurface")
 		if surface and planet.Name:find(tier.Planet, 1, true) then
-			configModule:SetAttribute("Ceiling_" .. tier.Id,
-				math.floor(surface.Position.Y + surface.Size.Y / 2 + Config.CeilingMargin))
+			local top = surface.Position + Vector3.new(0, surface.Size.Y / 2, 0)
+			configModule:SetAttribute("Ceiling_" .. tier.Id, math.floor(top.Y + Config.CeilingMargin))
+			configModule:SetAttribute("PlanetTop_" .. tier.Id, top) -- JetpackFlight sizes each fuel tank from these
 			found = true
 		end
 	end

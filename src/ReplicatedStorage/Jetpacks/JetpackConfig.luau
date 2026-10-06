@@ -2,14 +2,27 @@
 -- (JetpackFlight) and the GUI (SpaceGUI > Jetpacks page).
 -- Better jetpacks fly higher, faster and steer better, and each costs more Coins (Price) than the
 -- last. Coins are picked up on the planets (ServerScriptService.CoinPickups). Each tier can climb to
--- just above one planet (its Planet), so every new jetpack opens up the next planet and its more
--- valuable coins.
+-- one planet (its Planet), so every new jetpack opens up the next planet and its more valuable coins.
+-- Flying burns fuel, and each tank is sized from where the planets really are: enough to reach its
+-- own planet, but it runs dry FuelReach of the way to the next one (see JetpackFlight).
 local Config = {}
 
 -- How far above its planet's surface each jetpack can climb. The server works the actual heights out
 -- from where the planets are when it starts (ServerScriptService.Jetpacks stores them as
 -- "Ceiling_<Id>" attributes on this module), so the map can be moved without breaking flying.
 Config.CeilingMargin = 150
+
+-- Fuel: what one flight can do. Climbing costs FuelClimb per stud, flying sideways FuelMove per
+-- stud, and just being in the air FuelIdle per second. A tank holds enough to reach its own planet
+-- and FuelReach (0.9 = 90%) of the way from there to the next planet's costs; the last tier gets
+-- FuelSpare times what its own planet costs.
+Config.FuelClimb = 1
+Config.FuelMove = 0.3
+Config.FuelIdle = 4
+Config.FuelReach = 0.9
+Config.FuelSpare = 1.4
+-- The launch boost: every jetpack is carried this much of the way up to the first planet
+Config.LaunchFraction = 0.5
 
 Config.CurrencyAttribute = "Coins"       -- player attribute holding their coins (saved by PlayerSaving)
 Config.OwnedFolder = "OwnedJetpacks"     -- player folder with a BoolValue per bought tier Id (saved by PlayerSaving)
@@ -25,7 +38,7 @@ Config.TeleportGamepadButton = Enum.KeyCode.ButtonL2
 Config.TeleportCooldown = 3
 
 -- Planet: the planet it can reach (part of the planet model's name)   Speed: climb speed (studs/s)
--- AirSpeed: steering speed (kept for the shop's stats)   FlySpeed: free-flight speed after the launch
+-- AirSpeed: steering speed (kept for the shop's stats)   FlySpeed: flying speed after the launch (each faster)
 -- Cooldown: seconds after landing before it can launch again
 -- Colors: Body = frame, Tank = fuel tanks, Glow = neon trim, Flame = exhaust
 Config.Tiers = {
@@ -34,19 +47,19 @@ Config.Tiers = {
 		Colors = {Body = Color3.fromRGB(200, 210, 230), Tank = Color3.fromRGB(70, 140, 255),
 			Glow = Color3.fromRGB(90, 220, 255), Flame = Color3.fromRGB(255, 170, 60)}},
 	{Id = "frost", Name = "Frost Booster", Rarity = "Uncommon", Planet = "Mars", Price = 250,
-		Speed = 210, AirSpeed = 48, FlySpeed = 100, Cooldown = 2.5,
+		Speed = 210, AirSpeed = 48, FlySpeed = 105, Cooldown = 2.5,
 		Colors = {Body = Color3.fromRGB(225, 240, 255), Tank = Color3.fromRGB(120, 220, 255),
 			Glow = Color3.fromRGB(180, 250, 255), Flame = Color3.fromRGB(120, 210, 255)}},
 	{Id = "magma", Name = "Magma Thruster", Rarity = "Rare", Planet = "Mercury", Price = 1500,
-		Speed = 290, AirSpeed = 56, FlySpeed = 125, Cooldown = 2,
+		Speed = 290, AirSpeed = 56, FlySpeed = 135, Cooldown = 2,
 		Colors = {Body = Color3.fromRGB(70, 56, 70), Tank = Color3.fromRGB(255, 110, 40),
 			Glow = Color3.fromRGB(255, 200, 60), Flame = Color3.fromRGB(255, 90, 30)}},
 	{Id = "crystal", Name = "Crystal Wing", Rarity = "Epic", Planet = "Venus", Price = 7500,
-		Speed = 370, AirSpeed = 64, FlySpeed = 150, Cooldown = 1.5,
+		Speed = 370, AirSpeed = 64, FlySpeed = 165, Cooldown = 1.5,
 		Colors = {Body = Color3.fromRGB(90, 60, 170), Tank = Color3.fromRGB(190, 110, 255),
 			Glow = Color3.fromRGB(255, 120, 230), Flame = Color3.fromRGB(230, 120, 255)}},
 	{Id = "cosmic", Name = "Cosmic Nova", Rarity = "Legendary", Planet = "Jupiter", Price = 30000,
-		Speed = 450, AirSpeed = 75, FlySpeed = 180, Cooldown = 1,
+		Speed = 450, AirSpeed = 75, FlySpeed = 200, Cooldown = 1,
 		Colors = {Body = Color3.fromRGB(40, 30, 90), Tank = Color3.fromRGB(255, 210, 70),
 			Glow = Color3.fromRGB(255, 90, 230), Flame = Color3.fromRGB(255, 240, 140)}},
 }
@@ -76,6 +89,32 @@ end
 -- The highest Y this tier can climb to, or nil if the server couldn't find its planet
 function Config.Ceiling(tier)
 	return script:GetAttribute("Ceiling_" .. tier.Id)
+end
+
+-- The middle of the top of this tier's planet (a Vector3), or nil if the server couldn't find it
+function Config.PlanetTop(tier)
+	return script:GetAttribute("PlanetTop_" .. tier.Id)
+end
+
+-- Fuel it costs to fly in a straight line from `from` to `to` at `speed`
+function Config.FuelCost(from, to, speed)
+	local d = to - from
+	local across = Vector3.new(d.X, 0, d.Z).Magnitude
+	return Config.FuelClimb * math.max(0, d.Y) + Config.FuelMove * across + Config.FuelIdle * d.Magnitude / speed
+end
+
+-- How much fuel this tier gets for a flight starting at `from` (where the launch boost ends)
+function Config.FuelFor(tier, from)
+	local speed = tier.FlySpeed or 80
+	local own = Config.PlanetTop(tier)
+	if not own then return 1e9 end -- no planets found: don't strand anyone
+	local ownCost = Config.FuelCost(from, own + Vector3.new(0, 6, 0), speed)
+	local nextTier = Config.Tiers[tier.Index + 1]
+	local nextTop = nextTier and Config.PlanetTop(nextTier)
+	if not nextTop then return ownCost * Config.FuelSpare end
+	local nextCost = Config.FuelCost(from, nextTop + Vector3.new(0, 6, 0), speed)
+	if nextCost <= ownCost * 1.1 then return ownCost * Config.FuelSpare end -- planets too close to tell apart
+	return ownCost + (nextCost - ownCost) * Config.FuelReach
 end
 
 -- The tier the player is flying with: their saved choice, or the Starter Jet if that

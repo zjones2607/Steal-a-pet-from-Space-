@@ -1,15 +1,19 @@
 -- JetpackFlight (client only): flies the local player with their equipped jetpack. JetpackHUD's LAUNCH
 -- button and launch keys (JetpackConfig.LaunchKey / LaunchGamepadButton) call Flight.Launch().
 -- Launching only works while standing on a launch pad (inside a part tagged JetpackConfig.LaunchZoneTag).
--- 1. Boost: the launch carries the player halfway up to the tier's Ceiling, easing in and out.
+-- 1. Boost: the launch carries the player Config.LaunchFraction of the way up to the first planet,
+--    easing in and out. It's the same height for every jetpack; better ones just get there faster.
 -- 2. Flying: then they fly themselves, in any direction, at the tier's FlySpeed:
 --      W/A/S/D (or the thumbstick) fly where the camera looks: look up and press W to climb
 --      Space (or the jump button / gamepad A) goes straight up, Left Ctrl or Q (gamepad B) straight down
 --      with nothing pressed the jetpack hovers in place
 --    Speed changes blend smoothly, and the body leans into the way it's flying and banks into turns.
---    Nobody can fly above their tier's Ceiling.
+--    Flying burns fuel (climbing most, sideways less, a trickle while hovering). Each tank holds
+--    Config.FuelFor(tier, ...): enough for its own planet, not quite enough for the next one. When
+--    it runs dry the flames die and the player drifts down, still able to steer a little.
 -- 3. Landing: touching the ground (any planet, any floor) ends the flight; the cooldown starts then.
---   Flight.Launch()      -> ok, reason ("flying" | "cooldown" | "nopad" | "ceiling" | "nocharacter")
+--   Flight.Launch()      -> ok, reason ("flying" | "cooldown" | "nopad" | "nocharacter")
+--   Flight.Fuel()        -> fuel left as 0..1 while flying (1 during the launch), or nil on the ground
 --   Flight.OnLaunchPad() -> true while the player stands on a launch pad
 --   Flight.Cancel()      -> ends the current flight straight away (e.g. before teleporting)
 --   Flight.Status()      -> state ("Ready" | "Thrust" | "Flying"), cooldown seconds left, cooldown length
@@ -25,7 +29,8 @@ local Config = require(folder:WaitForChild("JetpackConfig"))
 local Models = require(folder:WaitForChild("JetpackModels"))
 local player = Players.LocalPlayer
 
-local BOOST_FRACTION = 0.5   -- the launch carries you this much of the way up to the ceiling
+local EMPTY_FALL = 60         -- studs/s the player sinks at once the fuel runs out
+local EMPTY_STEER = 0.35     -- share of FlySpeed they can still steer with on an empty tank
 local SPOOL_UP = 0.45        -- seconds the launch takes to reach full speed
 local RESPONSE = 3.2         -- how quickly flying speed follows the controls (higher = snappier)
 local TURN_RESPONSE = 9      -- how quickly the body turns, leans and banks
@@ -169,6 +174,12 @@ function Flight.OnLaunchPad()
 	return false
 end
 
+function Flight.Fuel()
+	if not flight then return nil end
+	if not flight.fuelMax then return 1 end -- still launching: a full tank
+	return math.clamp(flight.fuel / flight.fuelMax, 0, 1)
+end
+
 function Flight.Cancel()
 	if flight then finish(flight, false) end
 end
@@ -192,17 +203,16 @@ function Flight.Launch()
 	if not root or humanoid.Health <= 0 then return false, "nocharacter" end
 	if not Flight.OnLaunchPad() then return false, "nopad" end
 	local tier = Config.Equipped(player)
-	-- (The fallback only matters if the server couldn't find the planets)
-	local ceiling = Config.Ceiling(tier) or root.Position.Y + 900 * tier.Index
-	if root.Position.Y >= ceiling - 10 then return false, "ceiling" end
 	if humanoid.Sit then humanoid.Sit = false end
 
 	local camera = workspace.CurrentCamera
 	local baseFov = camera and camera.FieldOfView or 70
 	local f = {tier = tier, character = character, humanoid = humanoid, root = root, elapsed = 0,
-		ceiling = ceiling, objects = {}, autoRotate = humanoid.AutoRotate,
-		flySpeed = tier.FlySpeed or tier.AirSpeed * 2}
-	f.boostTo = root.Position.Y + (ceiling - root.Position.Y) * BOOST_FRACTION
+		objects = {}, autoRotate = humanoid.AutoRotate, flySpeed = tier.FlySpeed or tier.AirSpeed * 2}
+	-- Every jetpack's launch ends at the same height: part of the way up to the first planet
+	local firstPlanet = Config.PlanetTop(Config.Tiers[1])
+	local rise = firstPlanet and (firstPlanet.Y - root.Position.Y) * Config.LaunchFraction or 150
+	f.boostTo = root.Position.Y + math.max(rise, 40)
 	f.restoreFov = function(cam)
 		TweenService:Create(cam, TweenInfo.new(0.7, Enum.EasingStyle.Quad), {FieldOfView = baseFov}):Play()
 	end
@@ -262,20 +272,38 @@ function Flight.Launch()
 			target = Vector3.new(side.X, climb, side.Z)
 			if remaining <= 4 then
 				f.flyingSince = now
+				f.fuelMax = Config.FuelFor(tier, root.Position)
+				f.fuel = f.fuelMax
+				f.lastPos = root.Position
 				setState("Flying")
 			end
 			f.velocity = target -- the launch follows its own smooth curve
 		else
-			if steer.Magnitude > 0.01 then
+			-- Burn fuel for how we actually moved since last frame
+			local pos = root.Position
+			if not f.empty then
+				local d = pos - f.lastPos
+				f.fuel -= Config.FuelClimb * math.max(0, d.Y) + Config.FuelMove * Vector3.new(d.X, 0, d.Z).Magnitude
+					+ Config.FuelIdle * dt
+				if f.fuel <= 0 then
+					f.fuel = 0
+					f.empty = true
+					showFlames(f, false) -- the flames die; the body keeps its glide
+				end
+			end
+			f.lastPos = pos
+			local response = RESPONSE
+			if f.empty then
+				-- Out of fuel: sink, steering only a little, to pick where to come down
+				local across = Vector3.new(steer.X, 0, steer.Z)
+				target = across * f.flySpeed * EMPTY_STEER + Vector3.new(0, -EMPTY_FALL, 0)
+				response = RESPONSE * 0.6
+			elseif steer.Magnitude > 0.01 then
 				target = steer * f.flySpeed
 			else
 				target = Vector3.new(0, math.sin(now * 2.2) * HOVER_BOB, 0) -- hover in place
 			end
-			-- Never above the tier's ceiling: slow the climb near it, push back down above it
-			local headroom = f.ceiling - y
-			if headroom < 25 and target.Y > 0 then target = Vector3.new(target.X, target.Y * math.max(headroom, 0) / 25, target.Z) end
-			if headroom < 0 then target = Vector3.new(target.X, math.max(headroom * 2, -f.flySpeed), target.Z) end
-			local alpha = 1 - math.exp(-RESPONSE * dt)
+			local alpha = 1 - math.exp(-response * dt)
 			f.velocity = f.velocity:Lerp(target, alpha)
 			-- Landing: the ground is right under our feet (or will be by the next frame) and we're not climbing
 			if now - f.flyingSince > LAND_AFTER and f.velocity.Y < 1 then

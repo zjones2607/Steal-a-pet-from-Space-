@@ -5,7 +5,8 @@
 --           away when you step off. Flies with the equipped jetpack (JetpackFlight). Key: F / X
 --   MY PAD  shows while you're off the pad and teleports you to your station's launch pad
 --           (TeleportToLaunchSite). Key: T / L2, which works even while the buttons are hidden.
---   While flying, a hint at the top of the screen shows the flight controls.
+--   While flying, a hint at the top of the screen shows the flight controls, and a cartoon fuel
+--   gauge floats beside the player's jetpack (only they see it).
 -- Both buttons slide away while a menu is open: SpaceGUI and the admin panel set the local
 -- player attributes listed in MENU_ATTRIBUTES while their windows are showing.
 local Players = game:GetService("Players")
@@ -13,6 +14,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local GuiService = game:GetService("GuiService")
+local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 
 local folder = ReplicatedStorage:WaitForChild("Jetpacks")
@@ -282,6 +284,106 @@ local function showHint(on)
 	tween(hint, 0.4, {TextTransparency = on and 0 or 1})
 	tween(hintStroke, 0.4, {Transparency = on and 0 or 1})
 end
+
+-- FUEL GAUGE: a capsule beside the jetpack that drains as you fly. Green when full, then yellow,
+-- then red; it pulses and wobbles when low, and pops in and out with the flight.
+local GAUGE_W, GAUGE_H = 30, 96
+local FUEL_FULL, FUEL_MID, FUEL_LOW = Color3.fromRGB(110, 245, 120), Color3.fromRGB(255, 214, 60), Color3.fromRGB(255, 80, 70)
+local gauge = new("BillboardGui", playerGui, {Name = "JetpackFuel", Size = UDim2.fromOffset(GAUGE_W + 30, GAUGE_H + 44),
+	StudsOffset = Vector3.new(2.6, 0.4, 0), AlwaysOnTop = true, LightInfluence = 0, Enabled = false, ResetOnSpawn = false})
+local gaugeRoot = new("Frame", gauge, {BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1)})
+local gaugeScale = new("UIScale", gaugeRoot, {Scale = 0})
+-- the capsule
+local capsule = new("Frame", gaugeRoot, {AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -4),
+	Size = UDim2.fromOffset(GAUGE_W, GAUGE_H), BackgroundColor3 = C.Deep, ClipsDescendants = true})
+corner(capsule, GAUGE_W / 2)
+local capsuleStroke = stroke(capsule, C.Ink, 3)
+local fill = new("Frame", capsule, {AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1),
+	Size = UDim2.fromScale(1, 1), BackgroundColor3 = C.White})
+corner(fill, GAUGE_W / 2)
+local fillGradient = new("UIGradient", fill, {Rotation = 90})
+-- bubbles rising inside the fuel
+local bubbles = {}
+for i = 1, 3 do
+	local b = new("Frame", fill, {AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(5 + i, 5 + i),
+		Position = UDim2.fromScale(0.25 + 0.25 * i % 0.75, 1.1), BackgroundColor3 = C.White, BackgroundTransparency = 0.45})
+	corner(b, 8)
+	bubbles[i] = {frame = b, speed = 0.45 + 0.17 * i, offset = i * 0.33, x = ({0.3, 0.68, 0.48})[i]}
+end
+-- glossy shine down the left side, and tick marks
+local shine = new("Frame", capsule, {Position = UDim2.new(0, 5, 0, 8), Size = UDim2.new(0, 5, 1, -16),
+	BackgroundColor3 = C.White, BackgroundTransparency = 0.55, ZIndex = 3})
+corner(shine, 3)
+for i = 1, 3 do
+	new("Frame", capsule, {AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -4, i / 4, 0),
+		Size = UDim2.fromOffset(7, 2), BackgroundColor3 = C.Ink, BackgroundTransparency = 0.35, ZIndex = 3})
+end
+-- a fuel drop on top
+local drop = new("Frame", gaugeRoot, {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0, 20),
+	Size = UDim2.fromOffset(22, 22), BackgroundTransparency = 1, ZIndex = 4})
+local dropTip = new("Frame", drop, {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.42),
+	Size = UDim2.fromOffset(14, 14), Rotation = 45, BackgroundColor3 = C.White, ZIndex = 4})
+corner(dropTip, 3); stroke(dropTip, C.Ink, 2.5)
+local dropBall = new("Frame", drop, {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.62),
+	Size = UDim2.fromOffset(18, 18), BackgroundColor3 = C.White, ZIndex = 5})
+corner(dropBall, 9); stroke(dropBall, C.Ink, 2.5)
+local dropTipGradient = gradient(dropTip, C.OrangeTop, C.Orange)
+local dropGradient = gradient(dropBall, C.OrangeTop, C.Orange)
+new("Frame", dropBall, {Position = UDim2.fromOffset(4, 4), Size = UDim2.fromOffset(5, 5), BackgroundColor3 = C.White,
+	BackgroundTransparency = 0.25, ZIndex = 6}).Name = "Glint"
+local emptyLabel = text(gaugeRoot, "EMPTY", 15, {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 1, -GAUGE_H / 2 - 4),
+	Size = UDim2.fromOffset(60, 20), Rotation = -90, TextColor3 = FUEL_LOW, Visible = false, ZIndex = 8})
+
+local function fuelColor(frac)
+	if frac > 0.5 then return FUEL_MID:Lerp(FUEL_FULL, (frac - 0.5) / 0.5) end
+	return FUEL_LOW:Lerp(FUEL_MID, math.max(frac - 0.15, 0) / 0.35)
+end
+local gaugeShown, shownFuel, gaugeClock = false, 1, 0
+local function setGauge(on)
+	if on == gaugeShown then return end
+	gaugeShown = on
+	if on then
+		shownFuel = 1
+		gauge.Enabled = true
+		gaugeScale.Scale = 0
+		tween(gaugeScale, 0.45, {Scale = 1}, Enum.EasingStyle.Back)
+	else
+		tween(gaugeScale, 0.3, {Scale = 0}, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+		task.delay(0.32, function() if not gaugeShown then gauge.Enabled = false end end)
+	end
+end
+RunService.RenderStepped:Connect(function(dt)
+	local fuel = Flight.Fuel()
+	setGauge(fuel ~= nil)
+	if not gaugeShown then return end
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if gauge.Adornee ~= root then gauge.Adornee = root end
+	gaugeClock += dt
+	shownFuel += ((fuel or shownFuel) - shownFuel) * (1 - math.exp(-8 * dt)) -- glide, don't jump
+	local frac = math.clamp(shownFuel, 0, 1)
+	fill.Size = UDim2.fromScale(1, math.max(frac, 0.001))
+	fill.Visible = frac > 0.005
+	local col = fuelColor(frac)
+	fillGradient.Color = ColorSequence.new(col:Lerp(C.White, 0.35), col)
+	-- bubbles drift up through the fuel and start again at the bottom
+	for _, b in ipairs(bubbles) do
+		local t = (gaugeClock * b.speed + b.offset) % 1
+		b.frame.Position = UDim2.fromScale(b.x + math.sin((gaugeClock + b.offset) * 5) * 0.06, 1.05 - t * 1.1)
+		b.frame.BackgroundTransparency = 0.35 + t * 0.6
+	end
+	-- low fuel: pulse, flash the outline red and wobble; empty: say so
+	local low = frac < 0.2
+	local pulse = low and (0.5 + 0.5 * math.sin(gaugeClock * 10)) or 0
+	gaugeRoot.Rotation = low and math.sin(gaugeClock * 18) * 4 * (1 - frac / 0.2 * 0.5) or 0
+	capsuleStroke.Color = C.Ink:Lerp(FUEL_LOW, pulse)
+	if gaugeScale.Scale > 0.95 or low then gaugeScale.Scale = 1 + pulse * 0.08 end
+	drop.Rotation = math.sin(gaugeClock * 3) * 8
+	local dropCol = low and FUEL_LOW or C.Orange
+	dropGradient.Color = ColorSequence.new(dropCol:Lerp(C.White, 0.45), dropCol)
+	dropTipGradient.Color = dropGradient.Color
+	emptyLabel.Visible = frac <= 0.005
+end)
 
 -- Watch the pad and the jetpack's state
 local onPad = false
