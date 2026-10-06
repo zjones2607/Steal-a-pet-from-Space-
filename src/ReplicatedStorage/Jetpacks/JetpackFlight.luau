@@ -13,6 +13,7 @@
 --    it runs dry the flames die and the player drifts down, still able to steer a little.
 -- 3. Landing: touching the ground (any planet, any floor) ends the flight; the cooldown starts then.
 --   Flight.Launch()      -> ok, reason ("flying" | "cooldown" | "nopad" | "nocharacter")
+--   Flight.Info()        -> {state, elapsed, flySpeed, launchSpeed, empty} while flying, else nil
 --   Flight.Fuel()        -> fuel left as 0..1 while flying (1 during the launch), or nil on the ground
 --   Flight.OnLaunchPad() -> true while the player stands on a launch pad
 --   Flight.Cancel()      -> ends the current flight straight away (e.g. before teleporting)
@@ -121,7 +122,7 @@ local function showFlames(f, on)
 	local pack = f.character:FindFirstChild("Jetpack")
 	if pack then Models.SetThrust(pack, on) end -- right away for this player; the server shows everyone else
 	local remote = folder:FindFirstChild("JetpackThrust")
-	if remote then remote:FireServer(on) end
+	if remote then remote:FireServer(on, flight == f) end -- (finish clears `flight` first)
 end
 
 -- Landed, died, respawned or cancelled
@@ -178,6 +179,13 @@ function Flight.Fuel()
 	if not flight then return nil end
 	if not flight.fuelMax then return 1 end -- still launching: a full tank
 	return math.clamp(flight.fuel / flight.fuelMax, 0, 1)
+end
+
+-- For JetpackAnimations: what the local flight is doing right now, or nil on the ground
+function Flight.Info()
+	if not flight then return nil end
+	return {state = state, elapsed = flight.elapsed, flySpeed = flight.flySpeed, launchSpeed = flight.tier.Speed,
+		empty = flight.empty == true}
 end
 
 function Flight.Cancel()

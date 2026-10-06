@@ -154,8 +154,14 @@ teleportRemote.OnServerInvoke = function(player)
 	return true
 end
 
-thrustRemote.OnServerEvent:Connect(function(player, on)
-	local pack = player.Character and player.Character:FindFirstChild("Jetpack")
+-- (on, flying): flames on/off, and whether the player is in the air on their jetpack at all. The
+-- character's "JetpackFlying" attribute lets every device animate the flyer (JetpackAnimations).
+thrustRemote.OnServerEvent:Connect(function(player, on, flying)
+	local character = player.Character
+	if character and type(flying) == "boolean" and character:GetAttribute("JetpackFlying") ~= flying then
+		character:SetAttribute("JetpackFlying", flying)
+	end
+	local pack = character and character:FindFirstChild("Jetpack")
 	if not pack or pack:GetAttribute("Thrusting") == (on == true) then return end
 	pack:SetAttribute("Thrusting", on == true)
 	Models.SetThrust(pack, on == true)
