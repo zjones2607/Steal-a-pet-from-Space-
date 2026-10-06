@@ -1,6 +1,7 @@
 -- JetpackAnimations: makes jetpack flying look alive, for every flying player, on every device.
 -- No animation files are needed: the arms, legs, body and head of R15 and R6 characters are posed by code
--- each frame (Motor6D.Transform, set after Roblox's own animations), and every joint follows its
+-- each frame (the Transform of each Motor6D, or of each AnimationConstraint on Roblox's newer R15
+-- avatars, set after Roblox's own animations), and every joint follows its
 -- target on a spring, so the poses flow into each other instead of snapping.
 --   Launch    a quick crouch, then a straight-as-an-arrow push upward, arms pinned down, chin up
 --   Flying    the limbs react to which way the player is moving, relative to their body:
@@ -85,6 +86,21 @@ end
 ----------------------------------------------------------------------------
 local riders = {} -- [character] = rider
 
+-- A joint that can be posed: the classic Motor6D, or the AnimationConstraint that Roblox's newer
+-- R15 avatars use instead (both have a Transform). Looked up by name in its usual part first, then
+-- anywhere in the character.
+local function findJoint(character, partName, jointName)
+	local part = partName and character:FindFirstChild(partName)
+	local joint = part and part:FindFirstChild(jointName)
+	if not joint or not (joint:IsA("Motor6D") or joint:IsA("AnimationConstraint")) then
+		joint = nil
+		for _, d in ipairs(character:GetDescendants()) do
+			if d.Name == jointName and (d:IsA("Motor6D") or d:IsA("AnimationConstraint")) then joint = d break end
+		end
+	end
+	return joint
+end
+
 local function riderFor(character)
 	local rider = riders[character]
 	if rider then return rider end
@@ -95,24 +111,26 @@ local function riderFor(character)
 		flying = false, since = 0, landedAt = nil, convert = {}, muted = {}}
 	if humanoid.RigType == Enum.HumanoidRigType.R15 then
 		for joint, partName in pairs(R15_JOINTS) do
-			local part = character:FindFirstChild(partName)
-			local motor = part and part:FindFirstChild(joint)
-			if motor and motor:IsA("Motor6D") then
+			local motor = findJoint(character, partName, joint)
+			if motor then
 				rider.joints[joint] = motor
 				rider.convert[joint] = r15Convert
 				rider.angles[joint] = {x = 0, z = 0}
 			end
 		end
 	else
-		local torso = character:FindFirstChild("Torso")
 		for motorName, j in pairs(R6_JOINTS) do
-			local motor = torso and torso:FindFirstChild(motorName)
-			if motor and motor:IsA("Motor6D") then
+			local motor = findJoint(character, "Torso", motorName)
+			if motor then
 				rider.joints[j.name] = motor
 				rider.convert[j.name] = j.convert
 				rider.angles[j.name] = {x = 0, z = 0}
 			end
 		end
+	end
+	if next(rider.joints) == nil then
+		warn(("JetpackAnimations: found no arm/leg joints to animate on %s (rig %s)"):format(character.Name,
+			tostring(humanoid.RigType)))
 	end
 	riders[character] = rider
 	return rider
