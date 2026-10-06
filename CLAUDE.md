@@ -43,11 +43,15 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
   - **Jetpack data**: tiers and prices are in `ReplicatedStorage.Jetpacks.JetpackConfig`, and `JetpackModels` builds them from Parts.
   - **Server**: `Jetpacks.server.luau` creates the `BuyJetpack`, `EquipJetpack`, `JetpackThrust` and `TeleportToLaunchSite` remotes in that folder. It also straps the equipped jetpack to each player's back.
   - **Flying**: it happens on the client in `JetpackFlight`. Launching only works inside a `LaunchZone`, which `RideARocketLaunchSiteBuilder` puts on each station.
-    - LAUNCH boosts the player halfway up to their tier's ceiling (state `Thrust`), easing in and out.
+    - LAUNCH boosts every tier to the same height, `Config.LaunchFraction` (0.5) of the way up to the first planet (state `Thrust`). Better tiers just climb faster (`Speed`).
     - Then they fly freely (state `Flying`) at the tier's `FlySpeed`, using a `LinearVelocity` and an `AlignOrientation` with `PlatformStand` on.
       - WASD / the stick fly where the camera looks (tilts under 20° count as level). Space / jump / A go up, and Ctrl / Q / B go down.
       - With no input they hover. Velocity blends smoothly, and the body leans and banks.
-      - Players can't fly above `Config.Ceiling(tier)`.
+      - **Fuel replaces the old height cap.** Flying burns `FuelClimb` per stud climbed, `FuelMove` per stud sideways and `FuelIdle` per second.
+        - `Config.FuelFor(tier, from)` sizes the tank from the planet tops (`PlanetTop_<Id>` attributes the server sets): its own planet, plus `FuelReach` (90%) of the extra cost to the next planet. The last tier gets `FuelSpare` × its own planet's cost.
+        - When the tank is empty the flames stop and the player sinks at `EMPTY_FALL`, steering a little.
+        - Fuel refills only on a new launch from the pad: landing ends the flight. Each tier's `FlySpeed` is faster than the last.
+        - JetpackHUD draws a cartoon fuel gauge (a BillboardGui beside the player, seen only by them) from `Flight.Fuel()`.
     - Touching collidable ground (a downward raycast) lands them. The cooldown starts at landing.
     - JetpackHUD shows a controls hint while flying.
   - **Shop**: the Jetpacks page in SpaceGUI (4th right-column button, with the vector `Jetpack` icon from `SpaceIcons`).
