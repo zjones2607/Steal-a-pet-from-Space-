@@ -2,6 +2,7 @@
 Run headless from the repo root after building an egg:
 "/c/Program Files/Blender Foundation/Blender 5.2/blender.exe" --background --factory-startup --python-exit-code 1 --python tools/blender/eggs/test_eggs.py
 """
+import math
 import os
 import sys
 import unittest
@@ -17,6 +18,7 @@ import egg_common as ec
 EGGS = {
     "moon_mouse": [],
     "moon_rabbit": [],
+    "luna_moth": ["Glow_FlowerHearts"],
 }
 
 
@@ -44,6 +46,90 @@ class Eggs(unittest.TestCase):
         self.assertLess(float(np.abs((pts.max(0) + pts.min(0)) / 2).max()), 0.01)
         shell = scene.objects[f"{egg_id}_Shell"]
         self.assertTrue(any(n.type == "TEX_IMAGE" and n.image for n in shell.active_material.node_tree.nodes))
+
+
+class MothWings(unittest.TestCase):
+    """The owner asked for both wings to wrap round like a bat's (no moth body), dark stems at the wing ends,
+    and the flowers in the art."""
+
+    @classmethod
+    def setUpClass(cls):
+        import luna_moth
+        cls.moth = luna_moth
+        cls.scene = bpy.data.scenes.new("check_moth")
+        with bpy.context.temp_override(scene=cls.scene, view_layer=cls.scene.view_layers[0]):
+            bpy.ops.import_scene.fbx(filepath=os.path.join(ec.ASSETS, "luna_moth", "luna_moth.fbx"))
+
+    def piece(self, name):
+        return next(o for o in self.scene.objects if o.name.startswith("luna_moth_" + name))
+
+    @staticmethod
+    def apart(a, b):
+        """Turns between two places round the egg."""
+        d = (a - b) % 1
+        return min(d, 1 - d)
+
+    def test_both_wings_start_together_and_wrap_round_to_meet(self):
+        m = self.moth
+        for v in (0.2, 0.5, 0.8):
+            tips = []
+            for front in (True, False):
+                self.assertLess(self.apart(m.wing_u(front, 0.0, v), m.BASE_U), 0.05)       # bases together
+                tips.append(m.wing_u(front, 1.0, v))
+                self.assertGreater(self.apart(tips[-1], m.BASE_U), 0.1)                    # wrapped well round
+            self.assertLess(self.apart(*tips), m.OVERLAP + m.SCALLOP_DEPTH + 1e-6)         # the tips meet
+            self.assertLess(self.apart(m.wing_u(True, 0.5, v), 0.0), 0.25)                 # one round the front
+            self.assertLess(self.apart(m.wing_u(False, 0.5, v), 0.5), 0.25)                # one round the back
+
+    def test_no_moth_body_just_wings(self):
+        m = self.moth
+        shell = self.piece("Shell")
+        me, (x0, y0, x1, y1) = shell.data, m.STEM_RECT
+        uvs = me.uv_layers[0].data
+        stem = {me.loops[li].vertex_index for poly in me.polygons for li in poly.loop_indices   # the owner's stem
+                if x0 <= uvs[li].uv[0] < x1 and y0 <= uvs[li].uv[1] < y1}                     # runs down this line
+        pts = [shell.matrix_world @ vert.co for vert in me.vertices if vert.index not in stem]
+
+        def tallest(u0, v0):
+            """How far out the shell reaches straight above the egg point (u0, v0), however proud it stands."""
+            out = 0.0
+            for p in pts:
+                u, v = math.atan2(p.x, -p.y) / (2 * math.pi), p.z / m.HEIGHT + 0.5
+                if abs((u - u0 + 0.5) % 1 - 0.5) < 0.04 and abs(v - v0) < 0.05:
+                    out = max(out, math.hypot(p.x, p.y) - m.SHAPE.radius(v))
+            return out
+
+        # where the body used to cling, nothing stands prouder than the wing a little further round. A body
+        # stood about 0.19 prouder; plain wing reads within about 0.05 (finish() re-centring shifts the egg a
+        # few hundredths of a stud, which tilts this side-by-side comparison slightly).
+        self.assertLess(tallest(m.BASE_U, 0.76) - tallest(m.BASE_U + 0.1, 0.76), 0.1)
+
+    def test_a_dark_stem_runs_down_the_line_where_the_wings_meet(self):
+        m = self.moth
+        self.assertLess(max(m.STEM_DARK), 0.06)            # sorta black
+        path = m.stem_path()
+        for u, _, _ in path:
+            self.assertLess(self.apart(u, m.BASE_U), 0.01)  # right down the line
+        self.assertGreater(path[0][1], 0.8)                 # from up by the wing tops
+        self.assertLess(path[-1][1], 0.15)                  # down to the bottom
+        self.assertEqual((path[0][2], path[-1][2]), (0, 0))  # pointed at both ends
+        self.assertGreater(max(w for _, _, w in path), 0.05)
+
+    def test_three_flowers_with_glowing_hearts(self):
+        self.assertEqual(len(self.moth.FLOWERS), 3)
+        hearts = self.piece("Glow_FlowerHearts")
+        parent = list(range(len(hearts.data.vertices)))
+
+        def root(i):
+            while parent[i] != i:
+                parent[i] = parent[parent[i]]
+                i = parent[i]
+            return i
+
+        for edge in hearts.data.edges:
+            a, b = (root(i) for i in edge.vertices)
+            parent[a] = b
+        self.assertEqual(len({root(i) for i in range(len(parent))}), 3)            # one glowing heart per flower
 
 
 class RabbitBranches(unittest.TestCase):

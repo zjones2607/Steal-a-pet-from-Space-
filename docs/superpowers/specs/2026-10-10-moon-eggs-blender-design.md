@@ -18,6 +18,7 @@ effects, which egg shows where) is a separate design that comes next.
 
 - **Egg only.** No nests, crystals, rocks, moon discs or eclipse rings: the pen already builds its own
   nests. The rings, ribbons, planets, fireflies and flames in the artwork become Roblox effects later.
+  (Exception the owner asked for: the flowers sitting on the Luna Moth egg are modeled.)
 - **Faithful to the art**, not the game's Part-built cartoon style.
 - **Approach: full textures plus Neon glow pieces.** Each egg's look is baked into PBR images for a
   Roblox `SurfaceAppearance`; anything that glows is a separate untextured piece set to Neon in Roblox.
@@ -57,10 +58,14 @@ The artwork only shows fronts; patterns continue around the back in the same sty
 2. **Moon Rabbit (Uncommon).** A slightly taller egg in frosted, milky pale-blue crystal, with raised
    white frost veins branching up from the bottom like a tree. No glow pieces.
    *Later effects:* swirling gold ribbons, crystal glints.
-3. **Luna Moth (Rare).** A cocoon of two pale-green moth wings wrapped around the egg, meeting in a seam
-   down the front, wingtips curling at the top. The wings are modeled shapes with darker raised veins,
-   lighter yellow-green edges and a small yellow eyespot on each. No glow pieces.
-   *Later effects:* fireflies, drifting purple petals.
+3. **Luna Moth (Rare).** *(Revised with the owner while building.)* Two luna moth wings wrapped round the
+   egg like a bat's, with no moth body. They start together on the front left, where a dark, spotted stem
+   runs down the line they meet along, and wrap round the front and the back to meet on a scalloped seam
+   that runs diagonally from the top centre to the lower right. Sage green, with veins fanning out from the
+   stem, light margins with a row of pale spots, and a glowing yellow eyespot on each wing. Three
+   star-shaped purple flowers (real 3D petals) sit on the wings as in the artwork. Glow piece:
+   `Glow_FlowerHearts` (the flowers' hearts). About 3,400 triangles, since the wings and petals are real
+   shapes. *Later effects:* fireflies, drifting purple petals.
 4. **Lunar Wolf (Epic).** A dark slate-blue stone egg, rough and slightly cracked. A large oval window on
    the front in a raised carved stone frame, showing a deep-blue star map with orbit rings around a sun.
    Glow pieces just above the window: `Glow_Stars` (pale blue stars and constellation lines) and
