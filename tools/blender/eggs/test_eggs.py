@@ -14,6 +14,7 @@ import egg_common as ec
 
 # Each built egg -> the names of its glow pieces. Add an egg here before building it.
 EGGS = {
+    "moon_mouse": [],
 }
 
 

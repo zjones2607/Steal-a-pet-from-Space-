@@ -362,6 +362,7 @@ def _aim(obj):
 
 def add_preview_rig(egg_id, scene):
     """Camera, three lights and a dark sky for look renders. finish() exports meshes only."""
+    scene.view_settings.view_transform = "Standard"   # Roblox has no AgX; AgX would wash out pastels
     world = bpy.data.worlds.new(f"{egg_id}_world")
     if world.node_tree is None:
         world.use_nodes = True
@@ -515,6 +516,28 @@ def _use_baked(egg_id, shell, images):
     shell.data.materials.append(mat)
 
 
+def show(scene, objs):
+    """Show scene in Blender's 3D viewport: rendered shading, no overlays, framed on objs from the front.
+    Returns False (and does nothing) when there's no viewport, e.g. in a headless run."""
+    window = _window()
+    area = window and next((a for a in window.screen.areas if a.type == "VIEW_3D"), None)
+    if not area:
+        return False
+    window.scene = scene
+    space = area.spaces.active
+    space.shading.type = "RENDERED"
+    space.overlay.show_overlays = False
+    region = next(r for r in area.regions if r.type == "WINDOW")
+    with bpy.context.temp_override(**_select_only(scene, objs), area=area, region=region):
+        bpy.ops.view3d.view_axis(type="FRONT")
+        bpy.ops.view3d.view_selected()
+    space.region_3d.view_perspective = "PERSP"
+    space.region_3d.view_distance *= 1.15
+    for o in objs:
+        o.select_set(False, view_layer=scene.view_layers[0])
+    return True
+
+
 def finish(egg_id, scene, shape, shell, glows=(), out_dir=None, sizes=None, samples=4):
     """Check, bake and export one egg into out_dir (default assets/eggs/<id>/): <id>.fbx, <id>.blend and
     <id>_<map>.png per map. Raises EggCheckError, writing nothing, if a check fails.
@@ -540,4 +563,5 @@ def finish(egg_id, scene, shape, shell, glows=(), out_dir=None, sizes=None, samp
                                  apply_scale_options="FBX_SCALE_UNITS", bake_anim=False)
     paths["blend"] = os.path.join(out_dir, f"{egg_id}.blend")
     bpy.data.libraries.write(paths["blend"], {scene}, path_remap="RELATIVE_ALL", compress=True)
+    show(scene, pieces)
     return paths

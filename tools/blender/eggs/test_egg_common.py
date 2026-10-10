@@ -195,6 +195,23 @@ class Finish(unittest.TestCase):
             ec.finish("tcap", scene, s, shell, [glow], out_dir=out, sizes=SMALL, samples=1)
         self.assertEqual(os.listdir(out), [])
 
+    def test_preview_rig_shows_colours_like_roblox(self):
+        scene = ec.new_egg_scene("trig")
+        ec.add_preview_rig("trig", scene)
+        self.assertEqual(scene.view_settings.view_transform, "Standard")   # AgX would wash out pastels
+        self.assertEqual(scene.camera.name, "trig_camera")
+
+    def test_show_puts_the_egg_in_a_rendered_viewport(self):
+        scene = ec.new_egg_scene("tshow")
+        shell = ec.make_egg_mesh("tshow", scene, ec.EggShape())
+        self.assertTrue(ec.show(scene, [shell]))              # even headless Blender has a 3D view
+        window = bpy.context.window_manager.windows[0]
+        space = next(a for a in window.screen.areas if a.type == "VIEW_3D").spaces.active
+        self.assertEqual(window.scene, scene)
+        self.assertEqual(space.shading.type, "RENDERED")
+        self.assertFalse(space.overlay.show_overlays)
+        self.assertFalse(shell.select_get(view_layer=scene.view_layers[0]))
+
     def test_outputs_go_to_the_repo_whatever_file_is_open(self):
         repo = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".."))
         self.assertEqual(ec.ASSETS, os.path.join(repo, "assets", "eggs"))
