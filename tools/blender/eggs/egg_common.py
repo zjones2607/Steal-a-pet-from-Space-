@@ -228,24 +228,29 @@ def mask_image(egg_id, name, fn, size=1024):
 
 
 def paint_strokes(egg_id, name, shape, strokes, size=1024):
-    """Mask <id>_mask_<name> of soft-edged lines. strokes: [(points, width_in_studs)], points in egg
-    (u, v). Lines wrap across the back seam and keep their width in studs all round the egg."""
+    """Mask <id>_mask_<name> of soft-edged lines. strokes: [(points, width)], points in egg (u, v); width
+    in studs is one number, or one per point for a line that tapers (down to 0 for a sharp tip). Lines wrap
+    across the back seam and keep their width in studs all round the egg."""
     acc = np.zeros((size, size), np.float32)
     for points, width in strokes:
-        for (u0, v0), (u1, v1) in zip(points, points[1:]):
-            _segment(acc, shape, (u0 + 0.5, v0), (u1 + 0.5, v1), width / 2)
+        widths = width if isinstance(width, (list, tuple)) else [width] * len(points)
+        for (u0, v0), (u1, v1), w0, w1 in zip(points, points[1:], widths, widths[1:]):
+            _segment(acc, shape, (u0 + 0.5, v0), (u1 + 0.5, v1), w0 / 2, w1 / 2)
     return _grey(_image(f"{egg_id}_mask_{name}", size, True), acc)
 
 
-def _segment(acc, shape, a, b, half):
+def _segment(acc, shape, a, b, half_a, half_b):
     size = acc.shape[0]
+    widest = max(half_a, half_b)
+    if widest <= 0:
+        return
     sx, sy = shape.studs_per_uv((a[1] + b[1]) / 2)
     dx, dy = (b[0] - a[0]) * sx, (b[1] - a[1]) * sy
     length2 = dx * dx + dy * dy
     for shift in (-1, 0, 1):                       # copies a turn either side, so lines cross the seam
         ax = a[0] + shift
-        lo_x, hi_x = min(ax, ax + b[0] - a[0]) - half / sx, max(ax, ax + b[0] - a[0]) + half / sx
-        lo_y, hi_y = min(a[1], b[1]) - half / sy, max(a[1], b[1]) + half / sy
+        lo_x, hi_x = min(ax, ax + b[0] - a[0]) - widest / sx, max(ax, ax + b[0] - a[0]) + widest / sx
+        lo_y, hi_y = min(a[1], b[1]) - widest / sy, max(a[1], b[1]) + widest / sy
         x0, x1 = max(int(lo_x * size), 0), min(int(hi_x * size) + 2, size)
         y0, y1 = max(int(lo_y * size), 0), min(int(hi_y * size) + 2, size)
         if x0 >= x1 or y0 >= y1:
@@ -253,6 +258,7 @@ def _segment(acc, shape, a, b, half):
         px, py = np.meshgrid((np.arange(x0, x1) + 0.5) / size, (np.arange(y0, y1) + 0.5) / size)
         qx, qy = (px - ax) * sx, (py - a[1]) * sy
         t = np.clip((qx * dx + qy * dy) / length2, 0, 1) if length2 > 0 else 0.0
+        half = np.maximum(half_a + (half_b - half_a) * t, 1e-6)     # the line's half-width here
         s = np.clip(1 - np.hypot(qx - t * dx, qy - t * dy) / half, 0, 1)
         acc[y0:y1, x0:x1] = np.maximum(acc[y0:y1, x0:x1], s * s * (3 - 2 * s))
 
@@ -373,7 +379,7 @@ def add_preview_rig(egg_id, scene):
     bg.inputs["Color"].default_value = (0.04, 0.05, 0.08, 1)
     bg.inputs["Strength"].default_value = 0.5
     scene.world = world
-    for name, location, power, size in (("key", (-3.5, -5, 3.5), 900, 3), ("rim", (4, 5, 3), 700, 2),
+    for name, location, power, size in (("key", (-3.5, -5, 3.5), 500, 3), ("rim", (4, 5, 3), 700, 2),
                                         ("fill", (5, -4, -1), 250, 4)):
         light = bpy.data.lights.new(f"{egg_id}_{name}", "AREA")
         light.energy, light.size = power, size

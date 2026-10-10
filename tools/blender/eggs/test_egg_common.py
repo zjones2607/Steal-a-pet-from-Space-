@@ -127,6 +127,19 @@ class Masks(unittest.TestCase):
         self.assertGreater(px[128, 253], 0.9)
         self.assertEqual(img.colorspace_settings.name, "Non-Color")
 
+    def test_strokes_taper_to_a_point_with_a_width_per_point(self):
+        s = ec.EggShape()
+        img = ec.paint_strokes("tmask", "c", s, [([(0, 0.2), (0, 0.8)], [0.4, 0.0])], size=256)
+        px = pixels(img)[..., 0]
+
+        def at(v, studs_right):                      # pixel at height v, this far right of the front line
+            return px[int(v * 256), int((0.5 + studs_right / s.studs_per_uv(0.5)[0]) * 256)]
+
+        self.assertGreater(at(0.3, 0.08), 0.3)       # near the wide end the line is broad
+        self.assertLess(at(0.7, 0.08), 0.01)         # near the tip the same offset is blank
+        self.assertGreater(at(0.7, 0.0), 0.4)        # but the tip is still drawn down its middle
+        self.assertLess(at(0.81, 0.0), 0.01)         # and nothing past its point
+
     def test_mask_image_from_function(self):
         img = ec.mask_image("tmask", "b", lambda u, v: (np.abs(u) < 0.1) * 1.0, size=64)
         px = pixels(img)[..., 0]
