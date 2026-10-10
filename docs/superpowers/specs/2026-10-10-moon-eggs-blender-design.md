@@ -26,7 +26,7 @@ effects, which egg shows where) is a separate design that comes next.
 
 - **Size:** the whole egg, all pieces included, is 3 units tall (1 Blender unit = 1 stud, matching
   `PenEggs`' `EGG_HEIGHT = 3`), pivot at its centre. Each script has a `HEIGHT` constant at the top; in Roblox the Model's Scale resizes it.
-- **Pieces:**
+- **Pieces** (named `<id>_Shell`, `<id>_Glow_*`, since names must be unique within a Blender file):
   - `Shell`: one textured mesh.
   - `Glow_*`: zero or more small untextured meshes, set to Neon (and their colour) in Roblox.
 - **Triangle budget:** about 2,000 per egg; hard cap 4,000 (all pieces together). Detail lives in the
