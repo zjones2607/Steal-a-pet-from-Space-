@@ -4,6 +4,7 @@
 import math
 import os
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -132,6 +133,72 @@ class Masks(unittest.TestCase):
         self.assertAlmostEqual(px[32, 32], 1.0, places=2)
         self.assertAlmostEqual(px[32, 0], 0.0, places=2)
         self.assertEqual(img.name, "tmask_mask_b")
+
+
+SMALL = {"color": 128, "normal": 128, "roughness": 64, "metalness": 64}
+
+
+def test_egg(egg_id, segments=40, rings=24):
+    """A shell with a red-to-blue colour (bottom to top), bumps, roughness 0.3, metal 0.7, and one glow dot."""
+    s = ec.EggShape()
+    scene = ec.new_egg_scene(egg_id)
+    shell = ec.make_egg_mesh(egg_id, scene, s, segments, rings)
+    mat, nt, bsdf = ec.lookdev_material(egg_id)
+    height = ec.add(nt, "ShaderNodeSeparateXYZ", Vector=ec.coords(nt)).outputs["Z"]
+    fac = ec.add(nt, "ShaderNodeMapRange", Value=height, From_Min=-1.5, From_Max=1.5).outputs["Result"]
+    nt.links.new(ec.ramp(nt, fac, [(0, (1, 0, 0)), (1, (0, 0, 1))]), bsdf.inputs["Base Color"])
+    bsdf.inputs["Roughness"].default_value = 0.3
+    bsdf.inputs["Metallic"].default_value = 0.7
+    noise = ec.add(nt, "ShaderNodeTexNoise", Scale=8.0, Vector=ec.coords(nt))
+    nt.links.new(ec.bump(nt, noise.outputs["Fac"], 0.8), bsdf.inputs["Normal"])
+    shell.data.materials.append(mat)
+    glow = ec.make_dots(egg_id, scene, "Glow_X", s, [(0, 0.5, 0.1)])
+    glow.data.materials.append(ec.glow_material(egg_id, "Glow_X", (1, 0.3, 0)))
+    return scene, s, shell, glow
+
+
+class Finish(unittest.TestCase):
+    def test_finish_bakes_and_exports(self):
+        scene, s, shell, glow = test_egg("tfinish")
+        for o in (shell, glow):                       # finish() must re-centre a shifted egg
+            o.data.transform(ec.Matrix.Translation((0.2, 0, 0.4)))
+        engine = scene.render.engine
+        out = tempfile.mkdtemp()
+        paths = ec.finish("tfinish", scene, s, shell, [glow], out_dir=out, sizes=SMALL, samples=1)
+        self.assertEqual(scene.render.engine, engine)
+        for kind, size in SMALL.items():
+            self.assertEqual(tuple(bpy.data.images.load(paths[kind], check_existing=False).size), (size, size))
+        normal = pixels(bpy.data.images["tfinish_normal"])
+        self.assertGreater(normal[..., :3].std(axis=(0, 1)).max(), 0.01)          # bumps reached the normal map
+        self.assertAlmostEqual(float(np.median(normal[..., 2])), 1.0, delta=0.15)  # mostly pointing straight out
+        color = pixels(bpy.data.images["tfinish_color"])
+        self.assertGreater(color[5, :, 0].mean(), color[-5, :, 0].mean())         # red at the bottom
+        self.assertLess(np.abs(color[64, 0, :3] - color[64, -1, :3]).max(), 0.05)  # no seam at the back
+        metal = pixels(bpy.data.images["tfinish_metalness"])
+        self.assertAlmostEqual(float(np.median(metal[..., 0])), 0.7, delta=0.03)
+        self.assertEqual(bpy.data.images["tfinish_color"].colorspace_settings.name, "sRGB")
+        for kind in ec.NON_COLOR:
+            self.assertEqual(bpy.data.images[f"tfinish_{kind}"].colorspace_settings.name, "Non-Color")
+        pts = np.vstack([ec._verts(o) for o in (shell, glow)])
+        self.assertAlmostEqual(float(pts[:, 2].max() - pts[:, 2].min()), 3.0, places=4)
+        self.assertLess(float(np.abs((pts.max(0) + pts.min(0)) / 2).max()), 1e-4)
+        self.assertTrue(os.path.exists(paths["blend"]))
+        check = bpy.data.scenes.new("tfinish_check")
+        with bpy.context.temp_override(scene=check, view_layer=check.view_layers[0]):
+            bpy.ops.import_scene.fbx(filepath=paths["fbx"])
+        self.assertEqual(sorted(o.name.split(".")[0] for o in check.objects), ["tfinish_Glow_X", "tfinish_Shell"])
+
+    def test_over_the_cap_raises_and_writes_nothing(self):
+        scene, s, shell, glow = test_egg("tcap", segments=120, rings=40)   # 9,360 triangles
+        out = tempfile.mkdtemp()
+        with self.assertRaises(ec.EggCheckError):
+            ec.finish("tcap", scene, s, shell, [glow], out_dir=out, sizes=SMALL, samples=1)
+        self.assertEqual(os.listdir(out), [])
+
+    def test_outputs_go_to_the_repo_whatever_file_is_open(self):
+        repo = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".."))
+        self.assertEqual(ec.ASSETS, os.path.join(repo, "assets", "eggs"))
+        self.assertTrue(os.path.isfile(os.path.join(ec.REPO, "default.project.json")))
 
 
 if __name__ == "__main__":

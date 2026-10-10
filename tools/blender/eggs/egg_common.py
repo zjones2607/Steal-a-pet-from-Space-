@@ -255,3 +255,289 @@ def _segment(acc, shape, a, b, half):
         t = np.clip((qx * dx + qy * dy) / length2, 0, 1) if length2 > 0 else 0.0
         s = np.clip(1 - np.hypot(qx - t * dx, qy - t * dy) / half, 0, 1)
         acc[y0:y1, x0:x1] = np.maximum(acc[y0:y1, x0:x1], s * s * (3 - 2 * s))
+
+
+# --- materials ---------------------------------------------------------------------------------------
+
+def _new_material(name):
+    old = bpy.data.materials.get(name)
+    if old:
+        bpy.data.materials.remove(old)
+    mat = bpy.data.materials.new(name)
+    if mat.node_tree is None:                     # Blender before 5.0 needs nodes switched on
+        mat.use_nodes = True
+    nt = mat.node_tree
+    bsdf = next((n for n in nt.nodes if n.type == "BSDF_PRINCIPLED"), None) or nt.nodes.new("ShaderNodeBsdfPrincipled")
+    out = next((n for n in nt.nodes if n.type == "OUTPUT_MATERIAL"), None) or nt.nodes.new("ShaderNodeOutputMaterial")
+    nt.links.new(bsdf.outputs[0], out.inputs["Surface"])
+    return mat, nt, bsdf
+
+
+def lookdev_material(egg_id):
+    """New material <id>_lookdev with one Principled BSDF: build the look on it and finish() bakes it.
+    Returns (material, node_tree, bsdf)."""
+    return _new_material(f"{egg_id}_lookdev")
+
+
+def glow_material(egg_id, piece, rgb):
+    """Bright material for a Glow piece, so previews look right. Roblox replaces it with Neon in this colour."""
+    mat, _, bsdf = _new_material(f"{egg_id}_{piece}")
+    bsdf.inputs["Base Color"].default_value = (*rgb, 1)
+    bsdf.inputs["Emission Color"].default_value = (*rgb, 1)
+    bsdf.inputs["Emission Strength"].default_value = 4.0
+    return mat
+
+
+def _feed(nt, socket, value):
+    if isinstance(value, bpy.types.NodeSocket):
+        nt.links.new(value, socket)
+    elif socket.type == "RGBA":
+        socket.default_value = (*value[:3], 1)
+    else:
+        socket.default_value = value
+
+
+def add(nt, kind, **inputs):
+    """New node of type kind (e.g. "ShaderNodeTexNoise"). Keyword arguments set or link inputs by name,
+    with _ for spaces: add(nt, "ShaderNodeMapRange", Value=socket, From_Min=-1.5)."""
+    node = nt.nodes.new(kind)
+    for name, value in inputs.items():
+        _feed(nt, node.inputs[name.replace("_", " ")], value)
+    return node
+
+
+def coords(nt):
+    """Object-space position. The egg is centred on the origin, so this is position in studs."""
+    return nt.nodes.new("ShaderNodeTexCoord").outputs["Object"]
+
+
+def mask(nt, img):
+    """Image-texture node reading a mask; returns its colour output (use it as a 0..1 value)."""
+    node = nt.nodes.new("ShaderNodeTexImage")
+    node.image = img
+    return node.outputs["Color"]
+
+
+def mix(nt, fac, a, b):
+    """Colour from a (fac 0) to b (fac 1). Each argument is a socket or a plain value."""
+    node = nt.nodes.new("ShaderNodeMix")
+    node.data_type = "RGBA"
+    ins = {s.identifier: s for s in node.inputs}
+    _feed(nt, ins["Factor_Float"], fac)
+    _feed(nt, ins["A_Color"], a)
+    _feed(nt, ins["B_Color"], b)
+    return next(s for s in node.outputs if s.identifier == "Result_Color")
+
+
+def ramp(nt, fac, stops):
+    """Colour ramp over fac; stops: [(position, (r, g, b))]. Returns its colour output."""
+    node = nt.nodes.new("ShaderNodeValToRGB")
+    els = node.color_ramp.elements
+    while len(els) > 1:
+        els.remove(els[-1])
+    els[0].position, els[0].color = stops[0][0], (*stops[0][1], 1)
+    for pos, rgb in stops[1:]:
+        els.new(pos).color = (*rgb, 1)
+    _feed(nt, node.inputs["Fac"], fac)
+    return node.outputs["Color"]
+
+
+def calc(nt, op, a, b=0.0):
+    """Math node (op e.g. "ADD", "MULTIPLY", "SUBTRACT"); returns its output."""
+    node = nt.nodes.new("ShaderNodeMath")
+    node.operation = op
+    _feed(nt, node.inputs[0], a)
+    _feed(nt, node.inputs[1], b)
+    return node.outputs[0]
+
+
+def bump(nt, height, strength, distance=0.02):
+    """Normal output that bumps the surface by height (a 0..1 socket)."""
+    return add(nt, "ShaderNodeBump", Strength=strength, Distance=distance, Height=height).outputs["Normal"]
+
+
+def _aim(obj):
+    obj.rotation_euler = (-obj.location).to_track_quat("-Z", "Y").to_euler()
+
+
+def add_preview_rig(egg_id, scene):
+    """Camera, three lights and a dark sky for look renders. finish() exports meshes only."""
+    world = bpy.data.worlds.new(f"{egg_id}_world")
+    if world.node_tree is None:
+        world.use_nodes = True
+    nt = world.node_tree
+    bg = next((n for n in nt.nodes if n.type == "BACKGROUND"), None) or nt.nodes.new("ShaderNodeBackground")
+    out = next((n for n in nt.nodes if n.type == "OUTPUT_WORLD"), None) or nt.nodes.new("ShaderNodeOutputWorld")
+    nt.links.new(bg.outputs[0], out.inputs["Surface"])
+    bg.inputs["Color"].default_value = (0.04, 0.05, 0.08, 1)
+    bg.inputs["Strength"].default_value = 0.5
+    scene.world = world
+    for name, location, power, size in (("key", (-3.5, -5, 3.5), 900, 3), ("rim", (4, 5, 3), 700, 2),
+                                        ("fill", (5, -4, -1), 250, 4)):
+        light = bpy.data.lights.new(f"{egg_id}_{name}", "AREA")
+        light.energy, light.size = power, size
+        obj = bpy.data.objects.new(f"{egg_id}_{name}", light)
+        scene.collection.objects.link(obj)
+        obj.location = location
+        _aim(obj)
+    cam = bpy.data.objects.new(f"{egg_id}_camera", bpy.data.cameras.new(f"{egg_id}_camera"))
+    scene.collection.objects.link(cam)
+    cam.data.lens = 85
+    cam.location = (0, -13, 0.8)
+    _aim(cam)
+    scene.camera = cam
+
+
+# --- finish: check, fit, bake, export ----------------------------------------------------------------
+
+def _verts(obj):
+    co = np.empty(len(obj.data.vertices) * 3)
+    obj.data.vertices.foreach_get("co", co)
+    return co.reshape(-1, 3)
+
+
+def _tris(obj):
+    return sum(len(p.vertices) - 2 for p in obj.data.polygons)
+
+
+def _bsdf(mat):
+    found = [n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED"]
+    if len(found) != 1:
+        raise EggCheckError(f"{mat.name} needs exactly one Principled BSDF to bake, it has {len(found)}")
+    return found[0]
+
+
+def _check(shell, pieces):
+    for o in pieces:
+        if o.modifiers or o.matrix_world != Matrix.Identity(4):
+            raise EggCheckError(f"{o.name}: build pieces in place, with no modifiers or object transforms")
+    tris = sum(_tris(o) for o in pieces)
+    if tris > TRI_CAP:
+        raise EggCheckError(f"{tris} triangles is over the cap of {TRI_CAP}")
+    if not shell.data.uv_layers:
+        raise EggCheckError(f"{shell.name} has no UV map")
+    if len(shell.material_slots) != 1 or not shell.material_slots[0].material:
+        raise EggCheckError(f"{shell.name} needs exactly one material (its look-dev material)")
+    _bsdf(shell.material_slots[0].material)
+
+
+def _fit(pieces, height):
+    """Move and scale all pieces together so the whole egg is `height` tall, centred on the origin."""
+    pts = np.vstack([_verts(o) for o in pieces])
+    lo, hi = pts.min(0), pts.max(0)
+    m = Matrix.Scale(height / (hi[2] - lo[2]), 4) @ Matrix.Translation(Vector(-(lo + hi) / 2))
+    for o in pieces:
+        o.data.transform(m)
+        o.data.update()
+
+
+def _select_only(scene, objs):
+    """Select objs (first one active) and return a temp_override() context for operators on them."""
+    layer = scene.view_layers[0]
+    for o in scene.objects:
+        o.select_set(o in objs, view_layer=layer)
+    layer.objects.active = objs[0]
+    ctx = dict(scene=scene, view_layer=layer, active_object=objs[0], object=objs[0],
+               selected_objects=list(objs), selected_editable_objects=list(objs))
+    if _window():
+        ctx["window"] = _window()
+    return ctx
+
+
+_BAKE_TYPE = {"color": "EMIT", "metalness": "EMIT", "roughness": "ROUGHNESS", "normal": "NORMAL"}
+
+
+def _bake_one(mat, bsdf, kind, img):
+    nt = mat.node_tree
+    surface = next(n for n in nt.nodes if n.type == "OUTPUT_MATERIAL").inputs["Surface"]
+    shader = surface.links[0].from_socket
+    temp = [nt.nodes.new("ShaderNodeTexImage")]
+    temp[0].image = img
+    for node in nt.nodes:
+        node.select = False
+    temp[0].select = True
+    nt.nodes.active = temp[0]
+    if _BAKE_TYPE[kind] == "EMIT":                # send the colour (or metalness) straight out and bake that
+        emit = nt.nodes.new("ShaderNodeEmission")
+        temp.append(emit)
+        source = bsdf.inputs["Base Color" if kind == "color" else "Metallic"]
+        if source.links:
+            nt.links.new(source.links[0].from_socket, emit.inputs["Color"])
+        else:
+            value = source.default_value
+            emit.inputs["Color"].default_value = tuple(value) if kind == "color" else (value, value, value, 1)
+        nt.links.new(emit.outputs[0], surface)
+    try:
+        bpy.ops.object.bake(type=_BAKE_TYPE[kind], normal_space="TANGENT", margin=16, use_clear=True,
+                            target="IMAGE_TEXTURES")
+    finally:
+        for node in temp:
+            nt.nodes.remove(node)
+        nt.links.new(shader, surface)
+
+
+def _bake(egg_id, scene, shell, sizes, samples):
+    mat = shell.material_slots[0].material
+    bsdf = _bsdf(mat)
+    engine = scene.render.engine
+    try:
+        scene.render.engine = "CYCLES"
+    except TypeError as err:
+        raise EggCheckError(f"can't switch the render engine to Cycles: {err}") from err
+    scene.cycles.device = "CPU"
+    scene.cycles.samples = samples
+    images = {}
+    try:
+        with bpy.context.temp_override(**_select_only(scene, [shell])):
+            for kind, size in sizes.items():
+                images[kind] = _image(f"{egg_id}_{kind}", size, kind in NON_COLOR)
+                _bake_one(mat, bsdf, kind, images[kind])
+    finally:
+        scene.render.engine = engine
+    return images
+
+
+def _use_baked(egg_id, shell, images):
+    """Swap the shell onto material <id>_Shell, which reads the baked images (what the FBX carries)."""
+    mat, nt, bsdf = _new_material(f"{egg_id}_Shell")
+
+    def image(kind):
+        node = nt.nodes.new("ShaderNodeTexImage")
+        node.image = images[kind]
+        return node.outputs["Color"]
+
+    nt.links.new(image("color"), bsdf.inputs["Base Color"])
+    nt.links.new(image("roughness"), bsdf.inputs["Roughness"])
+    nt.links.new(image("metalness"), bsdf.inputs["Metallic"])
+    normal_map = add(nt, "ShaderNodeNormalMap", Color=image("normal"))
+    nt.links.new(normal_map.outputs["Normal"], bsdf.inputs["Normal"])
+    shell.data.materials.clear()
+    shell.data.materials.append(mat)
+
+
+def finish(egg_id, scene, shape, shell, glows=(), out_dir=None, sizes=None, samples=4):
+    """Check, bake and export one egg into out_dir (default assets/eggs/<id>/): <id>.fbx, <id>.blend and
+    <id>_<map>.png per map. Raises EggCheckError, writing nothing, if a check fails.
+    Returns {"fbx", "blend", "color", "normal", "roughness", "metalness"} -> path."""
+    pieces = [shell, *glows]
+    _check(shell, pieces)
+    _fit(pieces, shape.height)
+    images = _bake(egg_id, scene, shell, sizes or MAP_SIZES, samples)
+    out_dir = out_dir or os.path.join(ASSETS, egg_id)
+    os.makedirs(out_dir, exist_ok=True)
+    paths = {}
+    for kind, img in images.items():
+        paths[kind] = os.path.join(out_dir, f"{egg_id}_{kind}.png")
+        img.filepath_raw = paths[kind]
+        img.file_format = "PNG"
+        img.save()
+    _use_baked(egg_id, shell, images)
+    paths["fbx"] = os.path.join(out_dir, f"{egg_id}.fbx")
+    with bpy.context.temp_override(**_select_only(scene, pieces)):
+        bpy.ops.export_scene.fbx(filepath=paths["fbx"], use_selection=True, object_types={"MESH"},
+                                 mesh_smooth_type="FACE", use_tspace=True, use_mesh_modifiers=False,
+                                 path_mode="COPY", embed_textures=True, axis_forward="-Z", axis_up="Y",
+                                 apply_scale_options="FBX_SCALE_UNITS", bake_anim=False)
+    paths["blend"] = os.path.join(out_dir, f"{egg_id}.blend")
+    bpy.data.libraries.write(paths["blend"], {scene}, path_remap="RELATIVE_ALL", compress=True)
+    return paths
