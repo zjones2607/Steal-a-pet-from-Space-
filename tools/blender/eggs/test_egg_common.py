@@ -1,0 +1,236 @@
+"""Tests for egg_common. Run headless from the repo root:
+"/c/Program Files/Blender Foundation/Blender 5.2/blender.exe" --background --factory-startup --python-exit-code 1 --python tools/blender/eggs/test_egg_common.py
+"""
+import math
+import os
+import sys
+import tempfile
+import unittest
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import bmesh
+import bpy
+import numpy as np
+
+import egg_common as ec
+
+
+def pixels(img):
+    """An image's pixels as a (height, width, 4) array, row 0 at the bottom."""
+    a = np.empty(img.size[0] * img.size[1] * 4, np.float32)
+    img.pixels.foreach_get(a)
+    return a.reshape(img.size[1], img.size[0], 4)
+
+
+def tris(obj):
+    return sum(len(p.vertices) - 2 for p in obj.data.polygons)
+
+
+class Shape(unittest.TestCase):
+    def test_tips_and_width(self):
+        s = ec.EggShape(height=3, width=0.74, pointiness=0.16)
+        self.assertAlmostEqual(s.point(0, 0)[0].z, -1.5)
+        self.assertAlmostEqual(s.point(0, 1)[0].z, 1.5)
+        widest = max(range(1001), key=lambda i: s.radius(i / 1000)) / 1000
+        self.assertLess(widest, 0.5)                                   # fattest below the middle
+        self.assertAlmostEqual(2 * s.radius(widest), 3 * 0.74, delta=0.1)
+
+    def test_front_is_minus_y_and_normals_point_out(self):
+        s = ec.EggShape()
+        p, _ = s.point(0, 0.5)
+        self.assertLess(p.y, -1)
+        self.assertAlmostEqual(p.x, 0, places=6)
+        for u in (0, 0.13, 0.5, 0.77):
+            for v in (0.01, 0.3, 0.5, 0.9, 0.99):
+                p, n = s.point(u, v)
+                self.assertAlmostEqual(n.length, 1, places=5)
+                self.assertGreater(n.dot(p), 0)
+
+
+class Mesh(unittest.TestCase):
+    def test_shell_budget_size_and_uvs(self):
+        scene = ec.new_egg_scene("tmesh")
+        shell = ec.make_egg_mesh("tmesh", scene, ec.EggShape())
+        self.assertEqual(shell.name, "tmesh_Shell")
+        self.assertLessEqual(tris(shell), ec.TRI_TARGET)
+        zs = [v.co.z for v in shell.data.vertices]
+        self.assertAlmostEqual(max(zs), 1.5, places=4)
+        self.assertAlmostEqual(min(zs), -1.5, places=4)
+        uvs = np.empty(len(shell.data.loops) * 2)
+        shell.data.uv_layers[0].data.foreach_get("uv", uvs)
+        self.assertGreaterEqual(uvs.min(), 0)
+        self.assertLessEqual(uvs.max(), 1)
+
+    def test_shell_is_closed_and_faces_outward(self):
+        scene = ec.new_egg_scene("tclosed")
+        shell = ec.make_egg_mesh("tclosed", scene, ec.EggShape())
+        bm = bmesh.new()
+        bm.from_mesh(shell.data)
+        self.assertTrue(all(e.is_manifold for e in bm.edges))
+        self.assertTrue(all(f.normal.dot(f.calc_center_median()) > 0 for f in bm.faces))
+        bm.free()
+
+
+class Scenes(unittest.TestCase):
+    def test_rebuild_replaces_only_its_own_data(self):
+        s = ec.EggShape()
+        for _ in range(2):
+            scene = ec.new_egg_scene("trebuild")
+            ec.make_egg_mesh("trebuild", scene, s)
+            ec.paint_strokes("trebuild", "veins", s, [([(0, 0.2), (0, 0.8)], 0.05)], size=64)
+        self.assertEqual([x.name for x in bpy.data.scenes if x.name.startswith("egg_trebuild")], ["egg_trebuild"])
+        self.assertEqual([o.name for o in bpy.data.scenes["egg_trebuild"].objects], ["trebuild_Shell"])
+        for blocks in (bpy.data.objects, bpy.data.meshes, bpy.data.images):
+            self.assertEqual([b.name for b in blocks if b.name.startswith("trebuild") and "." in b.name], [])
+        self.assertIn("Cube", bpy.data.scenes["Scene"].objects)       # the owner's things are untouched
+        self.assertIn("Material", bpy.data.materials)
+
+
+class Decals(unittest.TestCase):
+    def test_dots_and_strips_sit_just_above_the_surface(self):
+        s = ec.EggShape()
+        scene = ec.new_egg_scene("tdecal")
+        dots = ec.make_dots("tdecal", scene, "Glow_A", s, [(0, 0.5, 0.05), (0.3, 0.8, 0.03)], lift=0.012)
+        strips = ec.make_strips("tdecal", scene, "Glow_B", s, [[(-0.1, 0.4), (0.1, 0.6)]], width=0.03, lift=0.012)
+        self.assertEqual(dots.name, "tdecal_Glow_A")
+        self.assertEqual(tris(dots), 2 * 6)
+        for obj in (dots, strips):
+            for vert in obj.data.vertices:
+                p = vert.co
+                gap = math.hypot(p.x, p.y) - s.radius(p.z / 3 + 0.5)
+                self.assertGreater(gap, 0)
+                self.assertLess(gap, 0.03)
+            for poly in obj.data.polygons:
+                self.assertGreater(poly.normal.dot(poly.center), 0)
+
+    def test_join_into_merges_and_removes(self):
+        s = ec.EggShape()
+        scene = ec.new_egg_scene("tjoin")
+        a = ec.make_strips("tjoin", scene, "Glow_A", s, [[(0, 0.4), (0, 0.6)]])
+        b = ec.make_dots("tjoin", scene, "Glow_B", s, [(0.2, 0.5, 0.05)])
+        before = tris(a) + tris(b)
+        ec.join_into(a, b)
+        self.assertEqual(tris(a), before)
+        self.assertEqual([o.name for o in scene.objects], ["tjoin_Glow_A"])
+        self.assertNotIn("tjoin_Glow_B", bpy.data.meshes)
+
+
+class Masks(unittest.TestCase):
+    def test_strokes_paint_lines_and_wrap_the_back_seam(self):
+        s = ec.EggShape()
+        img = ec.paint_strokes("tmask", "a", s, [([(0, 0.2), (0, 0.8)], 0.3), ([(0.45, 0.5), (0.55, 0.5)], 0.3)], size=256)
+        px = pixels(img)[..., 0]
+        self.assertGreater(px[128, 128], 0.95)       # the front line (texture x 0.5 is the front)
+        self.assertLess(px[128, 64], 0.01)           # a quarter turn away: blank
+        self.assertGreater(px[128, 2], 0.9)          # the line across the back seam shows at both edges
+        self.assertGreater(px[128, 253], 0.9)
+        self.assertEqual(img.colorspace_settings.name, "Non-Color")
+
+    def test_strokes_taper_to_a_point_with_a_width_per_point(self):
+        s = ec.EggShape()
+        img = ec.paint_strokes("tmask", "c", s, [([(0, 0.2), (0, 0.8)], [0.4, 0.0])], size=256)
+        px = pixels(img)[..., 0]
+
+        def at(v, studs_right):                      # pixel at height v, this far right of the front line
+            return px[int(v * 256), int((0.5 + studs_right / s.studs_per_uv(0.5)[0]) * 256)]
+
+        self.assertGreater(at(0.3, 0.08), 0.3)       # near the wide end the line is broad
+        self.assertLess(at(0.7, 0.08), 0.01)         # near the tip the same offset is blank
+        self.assertGreater(at(0.7, 0.0), 0.4)        # but the tip is still drawn down its middle
+        self.assertLess(at(0.81, 0.0), 0.01)         # and nothing past its point
+
+    def test_mask_image_from_function(self):
+        img = ec.mask_image("tmask", "b", lambda u, v: (np.abs(u) < 0.1) * 1.0, size=64)
+        px = pixels(img)[..., 0]
+        self.assertAlmostEqual(px[32, 32], 1.0, places=2)
+        self.assertAlmostEqual(px[32, 0], 0.0, places=2)
+        self.assertEqual(img.name, "tmask_mask_b")
+
+
+SMALL = {"color": 128, "normal": 128, "roughness": 64, "metalness": 64}
+
+
+def test_egg(egg_id, segments=40, rings=24):
+    """A shell with a red-to-blue colour (bottom to top), bumps, roughness 0.3, metal 0.7, and one glow dot."""
+    s = ec.EggShape()
+    scene = ec.new_egg_scene(egg_id)
+    shell = ec.make_egg_mesh(egg_id, scene, s, segments, rings)
+    mat, nt, bsdf = ec.lookdev_material(egg_id)
+    height = ec.add(nt, "ShaderNodeSeparateXYZ", Vector=ec.coords(nt)).outputs["Z"]
+    fac = ec.add(nt, "ShaderNodeMapRange", Value=height, From_Min=-1.5, From_Max=1.5).outputs["Result"]
+    nt.links.new(ec.ramp(nt, fac, [(0, (1, 0, 0)), (1, (0, 0, 1))]), bsdf.inputs["Base Color"])
+    bsdf.inputs["Roughness"].default_value = 0.3
+    bsdf.inputs["Metallic"].default_value = 0.7
+    noise = ec.add(nt, "ShaderNodeTexNoise", Scale=8.0, Vector=ec.coords(nt))
+    nt.links.new(ec.bump(nt, noise.outputs["Fac"], 0.8), bsdf.inputs["Normal"])
+    shell.data.materials.append(mat)
+    glow = ec.make_dots(egg_id, scene, "Glow_X", s, [(0, 0.5, 0.1)])
+    glow.data.materials.append(ec.glow_material(egg_id, "Glow_X", (1, 0.3, 0)))
+    return scene, s, shell, glow
+
+
+class Finish(unittest.TestCase):
+    def test_finish_bakes_and_exports(self):
+        scene, s, shell, glow = test_egg("tfinish")
+        for o in (shell, glow):                       # finish() must re-centre a shifted egg
+            o.data.transform(ec.Matrix.Translation((0.2, 0, 0.4)))
+        engine = scene.render.engine
+        out = tempfile.mkdtemp()
+        paths = ec.finish("tfinish", scene, s, shell, [glow], out_dir=out, sizes=SMALL, samples=1)
+        self.assertEqual(scene.render.engine, engine)
+        for kind, size in SMALL.items():
+            self.assertEqual(tuple(bpy.data.images.load(paths[kind], check_existing=False).size), (size, size))
+        normal = pixels(bpy.data.images["tfinish_normal"])
+        self.assertGreater(normal[..., :3].std(axis=(0, 1)).max(), 0.01)          # bumps reached the normal map
+        self.assertAlmostEqual(float(np.median(normal[..., 2])), 1.0, delta=0.15)  # mostly pointing straight out
+        color = pixels(bpy.data.images["tfinish_color"])
+        self.assertGreater(color[5, :, 0].mean(), color[-5, :, 0].mean())         # red at the bottom
+        self.assertLess(np.abs(color[64, 0, :3] - color[64, -1, :3]).max(), 0.05)  # no seam at the back
+        metal = pixels(bpy.data.images["tfinish_metalness"])
+        self.assertAlmostEqual(float(np.median(metal[..., 0])), 0.7, delta=0.03)
+        self.assertEqual(bpy.data.images["tfinish_color"].colorspace_settings.name, "sRGB")
+        for kind in ec.NON_COLOR:
+            self.assertEqual(bpy.data.images[f"tfinish_{kind}"].colorspace_settings.name, "Non-Color")
+        pts = np.vstack([ec._verts(o) for o in (shell, glow)])
+        self.assertAlmostEqual(float(pts[:, 2].max() - pts[:, 2].min()), 3.0, places=4)
+        self.assertLess(float(np.abs((pts.max(0) + pts.min(0)) / 2).max()), 1e-4)
+        self.assertTrue(os.path.exists(paths["blend"]))
+        check = bpy.data.scenes.new("tfinish_check")
+        with bpy.context.temp_override(scene=check, view_layer=check.view_layers[0]):
+            bpy.ops.import_scene.fbx(filepath=paths["fbx"])
+        self.assertEqual(sorted(o.name.split(".")[0] for o in check.objects), ["tfinish_Glow_X", "tfinish_Shell"])
+
+    def test_over_the_cap_raises_and_writes_nothing(self):
+        scene, s, shell, glow = test_egg("tcap", segments=120, rings=40)   # 9,360 triangles
+        out = tempfile.mkdtemp()
+        with self.assertRaises(ec.EggCheckError):
+            ec.finish("tcap", scene, s, shell, [glow], out_dir=out, sizes=SMALL, samples=1)
+        self.assertEqual(os.listdir(out), [])
+
+    def test_preview_rig_shows_colours_like_roblox(self):
+        scene = ec.new_egg_scene("trig")
+        ec.add_preview_rig("trig", scene)
+        self.assertEqual(scene.view_settings.view_transform, "Standard")   # AgX would wash out pastels
+        self.assertEqual(scene.camera.name, "trig_camera")
+
+    def test_show_puts_the_egg_in_a_rendered_viewport(self):
+        scene = ec.new_egg_scene("tshow")
+        shell = ec.make_egg_mesh("tshow", scene, ec.EggShape())
+        self.assertTrue(ec.show(scene, [shell]))              # even headless Blender has a 3D view
+        window = bpy.context.window_manager.windows[0]
+        space = next(a for a in window.screen.areas if a.type == "VIEW_3D").spaces.active
+        self.assertEqual(window.scene, scene)
+        self.assertEqual(space.shading.type, "RENDERED")
+        self.assertFalse(space.overlay.show_overlays)
+        self.assertFalse(shell.select_get(view_layer=scene.view_layers[0]))
+
+    def test_outputs_go_to_the_repo_whatever_file_is_open(self):
+        repo = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".."))
+        self.assertEqual(ec.ASSETS, os.path.join(repo, "assets", "eggs"))
+        self.assertTrue(os.path.isfile(os.path.join(ec.REPO, "default.project.json")))
+
+
+if __name__ == "__main__":
+    result = unittest.main(argv=["blender"], exit=False).result
+    sys.exit(0 if result.wasSuccessful() else 1)
