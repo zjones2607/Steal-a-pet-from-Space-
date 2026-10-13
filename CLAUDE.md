@@ -33,6 +33,14 @@ A Roblox game ("Ride a Rocket!"). The owner and other developers don't write cod
     - It restyles the map as the real solar system without moving anything: the station's planet becomes Earth, and the five floating planets become the Moon, Mars, Mercury, Venus and Jupiter.
     - Added parts go in `Detail` folders, removed decorations go in `ServerStorage.RemovedMapBackups.Decor_BeforeRealPlanets`, and changed parts keep their old looks in `Original...` attributes.
     - Run it again after re-running `RideARocketBaseBuilder` or `RideARocketMapBuilder`.
+- **Egg models (Blender)**: `tools/blender/eggs/` builds the five Moon eggs (`moon_mouse`, `moon_rabbit`, `luna_moth`, `lunar_wolf`, `eclipse_phoenix`) from the owner's artwork (`assets/eggs/reference/`). Design: `docs/superpowers/specs/2026-10-10-moon-eggs-blender-design.md`.
+  - Each build writes `assets/eggs/<id>/`: an FBX with embedded textures, colour/normal/roughness/metalness PNGs (for a SurfaceAppearance) and a `.blend`. `build_all.py` rebuilds all five and saves them together in `assets/eggs/moon_eggs.blend`.
+  - Pieces: a textured `<id>_Shell`, `<id>_Glow_*` pieces (Neon in Roblox), and the Wolf's `lunar_wolf_Glass` (Glass in Roblox). Every egg is 3 studs tall with its pivot at the centre, under 4,000 triangles.
+  - The Wolf's star chart is built in real layers at different depths, so it shows parallax in Roblox with no scripts.
+  - They aren't in the game yet. Importing them and adding their effects (rings, ribbons, fireflies, moon glow, eclipse ring) is the next job.
+  - Rebuild one in Blender with `runpy.run_path(r"<repo>\tools\blender\eggs\<id>.py", run_name="__main__")`. It only touches the scene `egg_<id>`.
+  - Shader colours in these scripts are linear (as Blender's sockets are), so they look lighter on screen.
+  - Tests run headless with Blender's `--background --factory-startup --python tools/blender/eggs/test_egg_common.py` (and `test_eggs.py`, which also pins what the owner asked for on each egg).
 - **Saving**: `src/ServerScriptService/PlayerSaving.server.luau` uses the DataStore `PlayerData_v1` with a per-session lock.
   - To save something new, add a player attribute or folder name to `SAVED_ATTRIBUTES` / `SAVED_FOLDERS`.
   - Other scripts must wait for the player's `DataLoaded` attribute before changing saved data. `PlanetEggCollection`, `CoinPickups` and `Jetpacks` already do.

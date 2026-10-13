@@ -50,6 +50,17 @@ class Eggs(unittest.TestCase):
         self.assertTrue(any(n.type == "TEX_IMAGE" and n.image for n in shell.active_material.node_tree.nodes))
 
 
+class SavedTogether(unittest.TestCase):
+    """The owner asked to make sure every egg is saved: they're all in one Blender file to open together."""
+
+    def test_every_egg_is_in_the_combined_blend(self):
+        path = os.path.join(ec.ASSETS, "moon_eggs.blend")
+        self.assertTrue(os.path.isfile(path), path)
+        with bpy.data.libraries.load(path) as (data_from, _):
+            scenes = list(data_from.scenes)
+        self.assertEqual(sorted(scenes), sorted("egg_" + egg for egg in EGGS))
+
+
 class MothWings(unittest.TestCase):
     """The owner asked for both wings to wrap round like a bat's (no moth body), dark stems at the wing ends,
     and the flowers in the art."""
