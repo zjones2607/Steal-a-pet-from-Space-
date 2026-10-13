@@ -20,6 +20,7 @@ EGGS = {
     "moon_rabbit": [],
     "luna_moth": ["Glow_FlowerHearts"],
     "lunar_wolf": ["Glow_Stars", "Glow_Orbits", "Glow_Sun", "Glass"],
+    "eclipse_phoenix": ["Glow_Embers"],
 }
 
 

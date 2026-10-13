@@ -290,7 +290,7 @@ def glow_material(egg_id, piece, rgb):
     mat, _, bsdf = _new_material(f"{egg_id}_{piece}")
     bsdf.inputs["Base Color"].default_value = (*rgb, 1)
     bsdf.inputs["Emission Color"].default_value = (*rgb, 1)
-    bsdf.inputs["Emission Strength"].default_value = 4.0
+    bsdf.inputs["Emission Strength"].default_value = 1.5   # brighter blows reds out to yellow in previews
     return mat
 
 
