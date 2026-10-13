@@ -19,6 +19,7 @@ EGGS = {
     "moon_mouse": [],
     "moon_rabbit": [],
     "luna_moth": ["Glow_FlowerHearts"],
+    "lunar_wolf": ["Glow_Stars", "Glow_Orbits", "Glow_Sun", "Glass"],
 }
 
 
@@ -130,6 +131,43 @@ class MothWings(unittest.TestCase):
             a, b = (root(i) for i in edge.vertices)
             parent[a] = b
         self.assertEqual(len({root(i) for i in range(len(parent))}), 3)            # one glowing heart per flower
+
+
+class WolfWindow(unittest.TestCase):
+    """The owner asked for the star system, planets and constellations to show parallax: real layers at
+    different depths behind the glass, so what you see shifts with the viewing angle."""
+
+    @classmethod
+    def setUpClass(cls):
+        import lunar_wolf
+        cls.wolf = lunar_wolf
+        cls.scene = bpy.data.scenes.new("check_wolf")
+        with bpy.context.temp_override(scene=cls.scene, view_layer=cls.scene.view_layers[0]):
+            bpy.ops.import_scene.fbx(filepath=os.path.join(ec.ASSETS, "lunar_wolf", "lunar_wolf.fbx"))
+
+    def piece(self, name):
+        return next(o for o in self.scene.objects if o.name.startswith("lunar_wolf_" + name))
+
+    def depth(self, points):
+        """Average studs below the egg's surface (negative: above it)."""
+        shape = self.wolf.SHAPE
+        return sum(shape.radius(p.z / self.wolf.HEIGHT + 0.5) - math.hypot(p.x, p.y) for p in points) / len(points)
+
+    def points(self, name):
+        obj = self.piece(name)
+        return [obj.matrix_world @ v.co for v in obj.data.vertices]
+
+    def test_layers_sit_at_different_depths_behind_the_glass(self):
+        shell = self.piece("Shell")
+        me, (x0, y0, x1, y1) = shell.data, self.wolf.BOWL_RECT
+        uvs, cx, cy = me.uv_layers[0].data, (x0 + x1) / 2, (y0 + y1) / 2
+        floor = {me.loops[li].vertex_index for poly in me.polygons for li in poly.loop_indices   # middle of the
+                 if math.hypot(uvs[li].uv[0] - cx, uvs[li].uv[1] - cy) < (x1 - x0) * 0.15}      # backdrop bowl
+        layers = [self.depth(self.points(name)) for name in ("Glass", "Glow_Stars", "Glow_Orbits", "Glow_Sun")]
+        layers.append(self.depth([shell.matrix_world @ me.vertices[i].co for i in floor]))
+        self.assertLess(layers[0], 0.03)                       # the glass sits at the surface
+        for shallower, deeper in zip(layers, layers[1:]):
+            self.assertGreater(deeper - shallower, 0.05, layers)  # each layer clearly deeper than the last
 
 
 class RabbitBranches(unittest.TestCase):

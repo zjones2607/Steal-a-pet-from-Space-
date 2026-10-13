@@ -30,6 +30,7 @@ effects, which egg shows where) is a separate design that comes next.
 - **Pieces** (named `<id>_Shell`, `<id>_Glow_*`, since names must be unique within a Blender file):
   - `Shell`: one textured mesh.
   - `Glow_*`: zero or more small untextured meshes, set to Neon (and their colour) in Roblox.
+  - `Glass` (Lunar Wolf only): a clear cover, set to Glass with some transparency in Roblox.
 - **Triangle budget:** about 2,000 per egg; hard cap 4,000 (all pieces together). Detail lives in the
   normal map, not the geometry. The build refuses to export over the cap.
 - **Textures** (Shell only): `<id>_color.png` and `<id>_normal.png` at 1024 px, `<id>_roughness.png` and
@@ -66,11 +67,15 @@ The artwork only shows fronts; patterns continue around the back in the same sty
    star-shaped purple flowers (real 3D petals) sit on the wings as in the artwork. Glow piece:
    `Glow_FlowerHearts` (the flowers' hearts). About 3,400 triangles, since the wings and petals are real
    shapes. *Later effects:* fireflies, drifting purple petals.
-4. **Lunar Wolf (Epic).** A dark slate-blue stone egg, rough and slightly cracked. A large oval window on
-   the front in a raised carved stone frame, showing a deep-blue star map with orbit rings around a sun.
-   Glow pieces just above the window: `Glow_Stars` (pale blue stars and constellation lines) and
-   `Glow_Sun` (gold sun).
-   *Later effects:* a pale moon glow behind it, twinkling.
+4. **Lunar Wolf (Epic).** *(Revised with the owner: real parallax.)* A dark slate stone egg with a large
+   oval porthole on the front in an ornate gold frame, with round medallions at its top and bottom (the
+   artwork's frame is gold). The star chart behind the glass is built in real layers at different depths,
+   so it shifts with the viewing angle in Roblox with no scripts: constellations just under the glass,
+   orbit rings and planets deeper, the sun deeper still, and a star-dusted backdrop bowl at the bottom.
+   Pieces: `Shell` (stone, frame, medallions, backdrop bowl and planets, all textured), `Glow_Stars`
+   (constellations), `Glow_Orbits` (orbit rings), `Glow_Sun`, and `Glass` (the cover; Glass material in
+   Roblox). *Later effects:* a pale moon glow behind it, twinkling, and a soft blue PointLight inside the
+   porthole so the backdrop glows like the art.
 5. **Eclipse Phoenix (Legendary).** A glossy black, obsidian-like egg with raised gold filigree whose
    swirls form a phoenix with spread wings across the front. Glow piece `Glow_Embers`: red-orange cracks
    and eyes glowing through the black.
